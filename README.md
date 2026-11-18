@@ -18,3 +18,12 @@
 공개 메인 화면의 버튼이 같은 출처의 `/api/transit`에 요청합니다. 5분 성공 캐시, 30초 실패 캐시를 적용하며 실제 조회 시각을 유지합니다. 조회에 실패한 데이터는 성공한 데이터와 별도로 표시합니다. 조회 결과는 게임 운행 자료와 독립적입니다.
 
 Sites 서버에는 `SEOUL_OPENAPI_KEY`와 `DATA_GO_KR_SERVICE_KEY`를 비밀 환경변수로 설정합니다. 배포 전에 `python3 worker/build.py`로 Worker를 생성합니다.
+
+## GitHub Pages 공개
+
+게임의 정적 파일은 GitHub Pages에도 게시할 수 있습니다. 프로젝트 사이트 주소는 `https://<GitHub ID>.github.io/<저장소 이름>/` 형식입니다.
+
+- `dist/`의 HTML, CSS, JS와 `vendor/`만 게시합니다. `dist/server/`, `.env`, API 인증키, Sites 저장소 자격 증명은 게시하지 않습니다.
+- GitHub Pages에서는 교통 데이터 확인 요청을 기존 공개 Sites 서버의 `/api/transit`으로 보냅니다. 서버가 공개 데이터 응답에 CORS 헤더를 제공하며, 인증키는 계속 Sites 서버에 보관합니다.
+- Sites 서버 변경도 배포되어야 GitHub Pages의 교통 데이터 조회가 작동합니다. 게임 플레이 자체는 정적 파일로 실행됩니다.
+- 기본 상대 경로를 사용하므로 저장소 하위 경로에서도 게임 자산을 불러올 수 있습니다.

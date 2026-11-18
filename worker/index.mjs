@@ -111,7 +111,12 @@ async function query(operation, key, secrets) {
 }
 
 function publicResponse(payload, cached) {
-  return Response.json({...payload, cached}, {headers:{'Cache-Control':'no-store'}});
+  // Only public, secret-filtered transit data is returned. No cookies or credentials are used.
+  return Response.json({...payload, cached}, {headers:{
+    'Cache-Control':'no-store',
+    'Access-Control-Allow-Origin':'*',
+    'Access-Control-Allow-Methods':'GET, HEAD',
+  }});
 }
 
 async function loadData(cache, cacheKey, env, ctx) {

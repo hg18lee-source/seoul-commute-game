@@ -8,20 +8,33 @@ const FAILURE_TTL = 30;
 let lastResult;
 let inFlight;
 
-async function upstream(url) {
-  const response = await fetch(url, {
-    redirect: 'error',
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!response.ok) throw new Error('upstream status');
-  return response;
+function failureCode(error) {
+  if (error instanceof UpstreamError) return error.message;
+  if (error?.name === 'AbortError') return 'timeout';
+  if (/http|scheme|protocol/i.test(error?.message ?? '')) return 'protocol';
+  if (/network|connect|dns|resolve|fetch/i.test(error?.message ?? '')) return 'connection';
+  return 'invalid-response';
+}
+
+class UpstreamError extends Error {}
+
+async function upstream(url, format) {
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(url, {redirect:'manual', signal:controller.signal});
+    if (!response.ok) throw new UpstreamError('http-' + response.status);
+    return await response[format]();
+  } finally {
+    clearTimeout(deadline);
+  }
 }
 
 async function subway(key) {
   const rows = [];
   const base = 'http://openapi.seoul.go.kr:8088/' + encodeURIComponent(key) + '/json/' + MASTER;
   for (let start = 1; start <= 10000;) {
-    const data = await (await upstream(base + '/' + start + '/' + (start + 999) + '/')).json();
+    const data = await upstream(base + '/' + start + '/' + (start + 999) + '/', 'json');
     const page = data[MASTER];
     if (page?.RESULT?.CODE !== 'INFO-000' || !page.row?.length) throw new Error('subway format');
     rows.push(...page.row.map(row => ({name: row.BLDN_NM, line: row.ROUTE})));
@@ -49,7 +62,7 @@ function xmlText(element, tag) {
 
 async function busRows(key, operation, parameters) {
   const query = new URLSearchParams({serviceKey: decodeURIComponent(key), ...parameters});
-  const xml = await (await upstream(BUS_BASE + operation + '?' + query)).text();
+  const xml = await upstream(BUS_BASE + operation + '?' + query, 'text');
   if (xmlText(xml, 'headerCd') !== '0') throw new Error('bus status');
   return [...xml.matchAll(/<itemList>([^]*?)<\/itemList>/g)].map(row => row[1]);
 }
@@ -90,8 +103,8 @@ async function query(operation, key, secrets) {
     try {
       const data = await operation(key);
       if (!containsSecret(data, secrets)) return {ok:true, checkedAt:new Date().toISOString(), data};
-    } catch {
-      // Never forward upstream exception text, response bodies or request URLs.
+    } catch (error) {
+      return {ok:false, checkedAt:new Date().toISOString(), failure:failureCode(error)};
     }
   }
   return {ok:false, checkedAt:key ? new Date().toISOString() : null};

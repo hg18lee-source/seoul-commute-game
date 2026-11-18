@@ -11,3 +11,9 @@
 .route-card > * { display:block; margin:.25rem 0; }
 #dialog input { display:block; margin:.5rem 0 1rem; padding:.65rem; width:100%; }
 #mobile-controls button { touch-action:none; }
+
+.traffic-results { max-height:45vh; overflow:auto; overscroll-behavior:contain; }
+.traffic-results section { margin:1rem 0; }
+.traffic-results section ol { max-height:11rem; overflow:auto; padding-left:1.8rem; }
+.traffic-results li { margin:.3rem 0; }
+#menu-actions { flex-wrap:wrap; }

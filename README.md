@@ -11,4 +11,10 @@
 - 장면과 인물은 자체 제작 지오메트리를 사용했습니다. Three.js 라이선스는 dist/vendor/THREE-LICENSE.txt에 포함되어 있습니다.
 - 버스 정류장 순서는 서울특별시 노선정보조회 서비스의 7016번 응답을 기준으로 정리했습니다. [공공데이터포털](https://www.data.go.kr/data/15000193/openapi.do)
 
-로컬에서 실행하려면 프로젝트 폴더에서 `python3 -m http.server --directory dist 8000`을 실행하고 브라우저에서 `http://localhost:8000`을 엽니다. WebGL 2가 필요합니다. 배포에는 `dist`와 기존 Sites 연결을 사용합니다.
+로컬에서 실행하려면 프로젝트 폴더에서 `python3 -m http.server --directory dist 8000`을 실행하고 브라우저에서 `http://localhost:8000`을 엽니다. WebGL 2가 필요합니다. 교통 데이터 버튼은 Sites 서버에서 실행됩니다. 정적 로컬 실행에서도 기존 게임을 플레이할 수 있습니다.
+
+## 교통 데이터 확인
+
+공개 메인 화면의 버튼이 같은 출처의 `/api/transit`에 요청합니다. 5분 성공 캐시, 30초 실패 캐시를 적용하며 실제 조회 시각을 유지합니다. 조회에 실패한 데이터는 성공한 데이터와 별도로 표시합니다. 조회 결과는 게임 운행 자료와 독립적입니다.
+
+Sites 서버에는 `SEOUL_OPENAPI_KEY`와 `DATA_GO_KR_SERVICE_KEY`를 비밀 환경변수로 설정합니다. 배포 전에 `python3 worker/build.py`로 Worker를 생성합니다.

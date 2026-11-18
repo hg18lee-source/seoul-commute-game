@@ -1,4 +1,5 @@
 import { World } from './world.js';
+import { showTraffic } from './traffic-data.js';
 
 const $ = id => document.getElementById(id);
 const keys = new Set();
@@ -71,7 +72,8 @@ function menu() {
   document.body.classList.remove('playing');
   world.setStage('street', {intro:true});
   $('screen').innerHTML = '<section class="intro panel"><p class="eyebrow">공덕동 → 시청</p><h1>대중교통<br>출근 게임</h1><p>08:00에 집을 나섭니다. 체력이 떨어지기 전에 시청역 근처 회사에 도착하세요.</p><div class="intro-meta"><span>체력 100</span><span>지하철 · 7016번</span></div><div id="menu-actions" class="button-row"></div><p class="small-note">방향키 이동 · Shift 달리기 · M 길찾기 · E 상호작용</p></section>';
-  $('menu-actions').append(button('Play', start, 'btn light'), button('시연용 로그인·기록', demo, 'btn'));
+  $('menu-actions').append(button('Play', start, 'btn light'), button('시연용 로그인·기록', demo, 'btn'),
+    button('교통 데이터 확인', () => showTraffic(openDialog, closeDialog), 'btn'));
 }
 function demo() {
   openDialog('<h2>시연용 로그인·기록</h2><p>닉네임과 개인 최고 기록은 이 브라우저에만 저장됩니다. 온라인 계정·랭킹은 제공하지 않습니다.</p><label>닉네임 <input id="nickname" maxlength="20" autocomplete="off"></label><p id="demo-best"></p><div id="dialog-actions" class="button-row"></div>');

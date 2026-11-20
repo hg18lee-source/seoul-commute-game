@@ -1,3 +1,4 @@
+import { entranceLanding, loadTransit } from './transit-scene.js';
 import { loadCommuter, movementSpeed } from './hero/motion.js';
 import { World } from './world.js';
 import { api, createPlay, currentAccount, element, setAccount } from './online.js';
@@ -93,11 +94,25 @@ async function start(course) {
   if (!status.isConnected) actions?.before(status);
   if (!world) {status.textContent='3D 장면을 아직 열 수 없습니다. WebGL 2 지원 여부를 확인해 주세요.';return;}
   starting=true;
-  status.textContent='공식 플레이를 발급하는 중…';
+  status.textContent='게임 장면을 준비하는 중…';
   const oldButtons=[...(actions?.querySelectorAll('button')??[])];
   for (const item of oldButtons) item.disabled=true;
   let issued;
-  try {issued=await api('play-start',{course});}
+  try {
+    if(!world.transit.entrance||!world.transit.gate){
+      const {loaded,failures}=await loadTransit(count=>{
+        status.textContent='역 입구·개찰구 불러오는 중 ('+count+'/2)';
+      });
+      if(failures.length){
+        status.textContent='3D 자산을 불러오지 못했습니다. 코스 버튼을 눌러 다시 시도하세요.';
+        return;
+      }
+      world.transit=loaded;
+    }
+    if(actions&&!actions.isConnected)return;
+    status.textContent='공식 플레이를 발급하는 중…';
+    issued=await api('play-start',{course});
+  }
   catch (error) {ui.showError(error,status);}
   finally {starting=false;for (const item of oldButtons) item.disabled=false;}
   if (!issued) return;
@@ -278,13 +293,10 @@ function action() {
     return;
   }
   const before=snapshot();
-  if (run.stage==='street'&&spot?.id==='station'&&run.busIndex===1&&run.route===0) {
-    run.station='공덕';
-    stage('hall',{station:run.station,line:run.line},before);
-  } else if (run.stage==='street'&&spot?.id==='bus'&&run.route===1) {
+  if (run.stage==='street'&&spot?.id==='bus'&&run.route===1) {
     if (doorTiming(5).open) ride('bus',run.busIndex===busStops.length-1?-1:1);
     else notice('앞문이 열리면 E로 탑승하세요.');
-  } else if (run.stage==='hall'&&spot?.id==='gate') platform(before);
+  } else if (run.stage==='hall'&&spot?.id==='gate') world.openGate(run.time);
   else if (run.stage==='platform'&&spot?.id==='exit') {
     if (run.station==='충정로') {
       run.line=run.line==='5'?'2':'5';
@@ -364,9 +376,13 @@ function refresh() {
         const door=doorTiming(5);
         hint=door.open?'E · 7016 앞문 승차 · '+Math.ceil(door.remaining)+'초':'다음 7016까지 '+Math.ceil(door.remaining)+'초';
       }
-      if (spot?.id==='station'&&run.busIndex===1&&run.route===0) hint='E · 공덕역 진입';
+      if (run.busIndex===1&&run.route===0&&near(-5,-22,3.5)) hint='좌우 통로로 맞춘 뒤 ↑ · 계단 내려가기';
     }
-    if (run.stage==='hall') { guide='앞쪽 개찰구에서 교통카드를 찍으세요'; if (spot?.id==='gate') hint='E · 교통카드 찍기'; }
+    if (run.stage==='hall') {
+      guide=world.gate.open?'열린 개찰구를 통과해 승강장으로 이동하세요':'앞쪽 개찰구에서 교통카드를 찍으세요';
+      if(spot?.id==='gate') hint=world.gate.open?'↑ · 개찰구 통과':
+        world.gate.startedAt===null?'E · 교통카드 찍기':'개찰구 열리는 중';
+    }
     if (run.stage==='platform') {
       guide=run.station==='충정로'&&run.line==='5'?'환승하려면 뒤쪽 통로로 이동하세요':'오른쪽 승강장 · '+(run.line==='5'?'충정로 방향':'시청 방향');
       const door=doorTiming(6);
@@ -386,6 +402,7 @@ function refresh() {
 function step(dt) {
   run.time+=dt;
   rideStep();
+  world.gateTick(run.time);
   let dx=0,dz=0;
   if (!phone&&!run.grip&&!run.seated) {
     dx=Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft'));
@@ -401,6 +418,13 @@ function step(dt) {
   eventStep(running);
   if (run.hp<=0) { finish(false); return; }
   if (run.stage==='office'&&near(0,-26,1.2)) { finish(true); return; }
+  if(run.stage==='street'&&run.route===0&&run.busIndex===1&&
+      world.hero.position.z<=entranceLanding&&near(-5,entranceLanding,1.7)) {
+    const before=snapshot();
+    stage('hall',{station:run.station,line:run.line},before);
+  } else if(run.stage==='hall'&&world.gate.open&&world.hero.position.z<=2.05) {
+    platform(snapshot());
+  }
   if (run.stage==='platform'&&dx&&near(Math.sign(dx)*4.45,0,.85)&&doorTiming(6).open) {
     const index=trainLines[run.line].indexOf(run.station);
     if (trainLines[run.line][index+Math.sign(dx)]) ride('train',Math.sign(dx));

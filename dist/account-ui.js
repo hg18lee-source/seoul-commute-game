@@ -4,7 +4,7 @@ import { showTraffic } from './traffic-data.js';
 export function accountInterface({openDialog,closeDialog,button,menu,start,timeText}) {
   const $=id=>document.getElementById(id);
   let courses;
-  const catalog=async()=>courses??=(await api('courses')).courses;
+  const catalog=async()=>courses??=await api('courses');
   function showError(error,status) {
     if (error.status===401) {setAccount(null);menu();}
     else status.textContent='요청에 실패했습니다. 다시 시도해 주세요.';
@@ -49,7 +49,7 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
     const status=$('course-status'), actions=$('dialog-actions');
     actions.append(button('닫기',closeDialog));
     try {
-      const list=await catalog();
+      const {courses:list}=await catalog();
       if (!actions.isConnected) return;
       status.textContent='같은 코스의 기록끼리 순위를 매깁니다.';
       actions.prepend(...Object.entries(list).map(([id,course])=>button(course.label,()=>start(id))));
@@ -63,6 +63,8 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
     $('record-close').onclick=closeDialog;
     const filter=element('select');
     filter.setAttribute('aria-label','코스');
+    const versions=element('select');
+    versions.setAttribute('aria-label','규칙 버전');
     let revision=0;
     async function load(page=1) {
       const requested=++revision;
@@ -70,13 +72,16 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
       pages.replaceChildren();
       try {
         const query=new URLSearchParams({page});
-        if (ranked) query.set('course',filter.value);
+        if (ranked) {
+          query.set('course',filter.value);
+          query.set('rules',versions.value);
+        }
         const result=await api((ranked?'ranking?':'records?')+query);
         if (requested!==revision||!rows.isConnected) return;
         rows.replaceChildren();
         for (const row of result.rows) {
           const text=ranked?row.rank+'위 · '+row.nickname+' · '+timeText(row.tenths/10):
-            (result.courses[row.course]?.label??row.course)+' · '+timeText(row.tenths/10)+' · '+kst.format(new Date(row.finished_at));
+            (result.courses[row.course]?.label??row.course)+' · '+timeText(row.tenths/10)+' · '+(result.ruleVersions[row.rules]??row.rules)+' · '+kst.format(new Date(row.finished_at));
           const line=element('li',text);
           if (row.mine) line.classList.add('mine');
           rows.append(line);
@@ -87,10 +92,12 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
       } catch (error) {if (requested===revision&&rows.isConnected) showError(error,status);}
     }
     if (ranked) {
-      catalog().then(list=>{
+      catalog().then(({courses:list,ruleVersions})=>{
         if (!status.isConnected) return;
         for (const [id,course] of Object.entries(list)) filter.add(new Option(course.label,id));
-        $('record-filter').append(filter);
+        for(const [id,label] of Object.entries(ruleVersions))versions.add(new Option(label,id));
+        $('record-filter').append(filter,versions);
+        versions.onchange=()=>load();
         filter.onchange=()=>load();
         load();
       }).catch(error=>{if (status.isConnected) showError(error,status);});

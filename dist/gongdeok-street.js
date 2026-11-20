@@ -1,10 +1,13 @@
 import * as THREE from './vendor/three.module.js';
+import { addShop, cladding } from './storefronts.js';
+import { addTraffic, placeEntrance } from './transit-scene.js';
 
 const stone=0xc0b8a9, warm=0xcbbba5, concrete=0xacaaa1;
 const ink=0x303d3c, metal=0x526561, wood=0x9a7654;
 const pane=0x9bb5b7, skyPane=0xb6c9c9, road=0x555e61;
 const materials=new Map(), signs=new Map();
 let pavementTexture;
+const facadeTiles=new Map();
 const façades=[
   {name:'공덕마루',hint:'공동 현관',z:14,w:9.4,h:17.6,bays:3,wall:0xc5b9ab,trim:0x8a7a6a,kind:'home'},
   {name:'모퉁이 커피',hint:'커피 · 차',z:3,w:11.1,h:10.5,bays:3,wall:0xbca991,trim:0x67554b,kind:'cafe'},
@@ -74,16 +77,18 @@ function signage(parent,title,sub,w,h,x,y,z,yaw,background) {
   parent.add(sign);
 }
 
-export function buildGongdeok(parent) {
+export function buildGongdeok(parent,entranceAsset) {
   const group=new THREE.Group();
   group.name='Gongdeok exterior';
   parent.add(group);
   const batches=new Map(), dummy=new THREE.Object3D();
   function part(type,x,y,z,w,h,d,color,options={}) {
-    const surface=material(type,color,options.surface);
+    const tile=options.tile;
+    if(tile&&!facadeTiles.has(tile))facadeTiles.set(tile,cladding(tile).userData.light);
+    const surface=tile?facadeTiles.get(tile):material(type,color,options.surface);
     // Smaller spatial batches let the camera and shadow pass cull distant sections.
     const sector=type==='masonry'&&d<18?Math.floor(z/22)+':'+(x<-10?'west':'east'):'all';
-    const key=[type,color,options.shape??'box',Boolean(options.cast),sector].join(':');
+    const key=[tile,type,color,options.shape??'box',Boolean(options.cast),sector].join(':');
     if (!batches.has(key)) batches.set(key,{
       surface,shape:options.shape??'box',cast:options.cast,
       receive:type==='masonry'||type==='metal'||type==='wood',matrices:[],
@@ -103,11 +108,24 @@ export function buildGongdeok(parent) {
   const bulb=(x,y,z,w,h,d)=>part('lamp',x,y,z,w,h,d,0xffe9be,{
     surface:{emissive:0x99774a,emissiveIntensity:.35},
   });
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(20.5,105),material('pavers',0xffffff,{map:pavement(),roughness:1}));
-  ground.rotation.x=-Math.PI/2;
-  ground.position.set(0,0,-13);
-  ground.receiveShadow=true;
-  group.add(ground);
+  const paving=(x,z,w,d)=>{
+    const geometry=new THREE.PlaneGeometry(w,d);
+    const uv=geometry.getAttribute('uv');
+    for(let i=0;i<uv.count;i++) uv.setXY(i,uv.getX(i)*w/20.5+(x-w/2+10.25)/20.5,
+      uv.getY(i)*d/105-(z+d/2-39.5)/105);
+    const ground=new THREE.Mesh(geometry,material('pavers',0xffffff,{map:pavement(),roughness:1}));
+    ground.rotation.x=-Math.PI/2;
+    ground.position.set(x,0,z);
+    ground.receiveShadow=true;
+    group.add(ground);
+  };
+  if(entranceAsset) {
+    paving(-8.63,-13,3.24,105);
+    paving(3.63,-13,13.24,105);
+    paving(-5,8.65,4.02,61.7);
+    paving(-5,-50.15,4.02,30.7);
+    placeEntrance(entranceAsset,group);
+  } else paving(0,-13,20.5,105);
   box(20,-.23,-14,60,.14,155,0xb0aba0);
   box(-31,-.97,-14,42,.14,155,0xb0aba0);
   box(18.4,-.20,-15,16.3,.15,153,road);
@@ -127,8 +145,9 @@ export function buildGongdeok(parent) {
   box(9.29,.004,-13,1.08,.007,105,0xadac9e);
   box(7.95,.009,-13,.43,.013,105,0xc8ab63);
   for (const x of [7.84,7.95,8.06]) box(x,.018,-13,.031,.014,105,0xd5ba74);
-  box(.1,.008,-23.7,14.9,.013,.37,0xc9ab62);
+  if(!entranceAsset) box(.1,.008,-23.7,14.9,.013,.37,0xc9ab62);
   for (let x=-7.25;x<=7.65;x+=.23) {
+    if(entranceAsset&&Math.abs(x+5)<2.07)continue;
     part('stud',x,.019,-23.7,.064,.012,.064,0xddbf72,{shape:'cylinder'});
   }
   for (let z=-64;z<38;z+=2.4) box(10.33,.007,z,.21,.01,.035,0x9a958b);
@@ -136,6 +155,12 @@ export function buildGongdeok(parent) {
   function building(spec) {
     const {w,h,z,wall,trim,kind,bays}=spec;
     const front=-10.58;
+    const shop=kind==='cafe'?'food':kind==='store'?'optics':null;
+    const surfaceColors={wood:0x89654e,metal:0x57686a,warmWall:0xd1b69b,
+      opticWall:0xc9d8cd,warmFloor:0x977f69,cream:0xe3d9c1,brick:0xaf7866,
+      redTrim:0x843c31,canvasRed:0x933e31,canvasLight:0xce9e77,dinerWood:0xa37452,
+      steelDark:0x4a4c47,lamp:0xffe6ab,opticCabinet:0x627676,clearFacade:0x8ca7a6,
+      slate:0x758181,granite:0xa79e8b};
     const B=(u,y,depth,width,height,thickness,color,cast=false)=>{
       // Overlapping wall and window reveals share the shadow of the outer mass.
       const silhouette=thickness>.66 || (height>5 && width>.5);
@@ -169,7 +194,10 @@ export function buildGongdeok(parent) {
     }
     const deck=kind==='office'?3.65:3.25;
     const inset=kind==='home'?.54:.37;
-    B(0,h/2,-3.15,w,h,5.15,wall,true);
+    if(shop) {
+      B(0,(h+3.25)/2,-3.15,w,h-3.25,5.15,wall,true);
+      B(0,1.64,-4.53,w,3.28,2.39,wall,true);
+    } else B(0,h/2,-3.15,w,h,5.15,wall,true);
     B(0,h-.16,-.58,w+.16,.30,.98,trim,true);
     B(0,h+.15,-2.7,w+.23,.29,5.55,0xd1cabc,true);
     B(kind==='home'?1.15:-.8,h+.69,-2.5,w*.67,.82,3.75,wall,true);
@@ -195,6 +223,20 @@ export function buildGongdeok(parent) {
         }
       }
       B(0,fy-1.30,-.19,w,.084,.42,0xc2b8a9);
+    }
+    if(shop) {
+      const decor=new THREE.Group();
+      decor.position.set(front,0,z);
+      decor.rotation.y=Math.PI;
+      group.add(decor);
+      addShop({root:decor,w,base:0,z:0,kind:shop,
+        label:(parent,title,sub,x,y,z,w,h,yaw,color)=>signage(parent,title,sub,w,h,x,y,z,yaw,color),
+        q:(name,u,y,d,width,height,depth,opts={})=>part('shop '+name,front-d,y,z-u,
+          depth,height,width,surfaceColors[name],{...opts,tile:name==='brick'?'brick':name==='granite'?'stone':null,
+            surface:name==='clearFacade'?{transparent:true,opacity:.23,depthWrite:false,roughness:.34}:
+              name==='lamp'?{emissive:0xffdb9f,emissiveIntensity:.45}:undefined}),
+      });
+      return;
     }
     const number=kind==='home'?3:kind==='office'?3:bays;
     const spacing=(w-inset*2)/number;
@@ -287,6 +329,7 @@ export function buildGongdeok(parent) {
 
   // Stair volume is behind the western movement bound. The station approach stays walkable.
   const st=-24;
+  if(!entranceAsset) {
   box(-14.87,1.34,st,.24,2.78,3.75,0x46544f,true);
   box(-13.3,-.87,st,3.6,.14,3.48,0x777f74,true);
   for (let i=0;i<7;i++) {
@@ -308,6 +351,11 @@ export function buildGongdeok(parent) {
   signage(group,'⑤ 공덕역','지하철 입구',2.85,.66,-8.55,2.88,st+2.586,0,'#4f466c');
   box(-8.55,2.88,st+2.51,2.99,.69,.12,0x4f466c,true);
 
+  } else {
+    signage(group,'공덕역  1번 출구','5 · 6호선',3.75,.65,-5,2.68,-22.85,0,'#51436a');
+    frame(-6.72,1.4,-22.9,.075,2.8,.085);
+    frame(-3.28,1.4,-22.9,.075,2.8,.085);
+  }
   // Curbside shelter cantilevers above, keeping the existing boarding point unobstructed.
   const bz=-42.4;
   for (const z of [bz-2.30,bz+.28,bz+2.34]) frame(10.65,1.28,z,.114,2.55,.125);
@@ -325,7 +373,7 @@ export function buildGongdeok(parent) {
   box(10.51,.80,bz+2.93,.042,.78,.65,0xc5c8b2);
   for (let i=0;i<4;i++) box(10.48,.55+i*.145,bz+2.94,.037,.036,.46,0x85948a);
   signage(group,'7016','광화문 방면',.77,.62,10.48,1.99,bz+2.93,-Math.PI/2,'#385a4c');
-  signage(group,'7016','버스 정류장',2.33,.56,9.21,2.97,bz+2.629,0,'#385a4c');
+  signage(group,'7016','공덕역1번출구',2.33,.56,9.21,2.97,bz+2.629,0,'#385a4c');
   box(9.21,2.97,bz+2.55,2.45,.62,.14,0x385a4c,true);
   box(8.76,.017,-42,1.06,.023,3.14,0xbbad83);
   for (const z of [-43.53,-40.47]) box(8.76,.032,z,1.06,.014,.045,0xe4d9b4);
@@ -344,9 +392,10 @@ export function buildGongdeok(parent) {
 }
 
 export function populateGongdeok(world) {
-  buildGongdeok(world.root);
+  buildGongdeok(world.root,world.transit.entrance);
+  world.traffic=addTraffic(world.root);
   world.streetBus=world.busModel(12.44,-42);
-  world.spot('station','역으로 들어가기',-5,-24);
+  if(!world.transit.entrance) world.spot('station','역으로 들어가기',-5,-24);
   world.spot('bus','버스 정류장에서 기다리기',7,-42);
   world.bounds={minX:-10,maxX:10,minZ:-48,maxZ:32};
   world.people(14,{x:7,z:76,offset:-5});

@@ -28,3 +28,8 @@ body.admin { margin: 0; background: #f4f3e9; color: #173739; font: 15px/1.5 syst
 .admin dialog { max-width: min(92vw, 800px); border: 1px solid #d5ddd3; border-radius: .6rem; }
 .admin pre { overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 680px) { .admin-columns { grid-template-columns: 1fr; } .admin main { padding: .8rem; } }
+
+/* The intro gradient supports menu text. The playable scene uses its own HUD. */
+body.playing #shade { opacity: 0; }
+.top-right a { color: inherit; text-underline-offset: .24em; }
+body.playing .top-right a { display: none; }

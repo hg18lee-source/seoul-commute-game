@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { courses, expiryMs, initialState, rules, validateBatch } from './rules.mjs';
+import { courses, expiryMs, initialState, rules, ruleVersions, validateBatch } from './rules.mjs';
 
 export const uuid = value => typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 export const knownCourse = value => typeof value==='string'&&Object.hasOwn(courses,value);
@@ -32,9 +32,9 @@ export async function advance(db, ctx, body, action, now) {
     [body.id,ctx.user.id,ctx.tokenHash]);
   if (!p) return block(404,'play_not_found');
   if (p.status!=='active') return block(409,p.invalid_reason==='connection_lost'?'connection_lost':'play_closed');
-  if (now-Number(p.seen_ms)>=expiryMs || now-Number(p.start_ms)>7200000 || p.rules!==rules) {
-    await end(db,p.id,'invalid',p.rules===rules?'connection_lost':'rules_changed');
-    return block(409,p.rules===rules?'connection_lost':'rules_changed');
+  if (now-Number(p.seen_ms)>=expiryMs || now-Number(p.start_ms)>7200000 || !Object.hasOwn(ruleVersions,p.rules)) {
+    await end(db,p.id,'invalid',Object.hasOwn(ruleVersions,p.rules)?'connection_lost':'rules_changed');
+    return block(409,Object.hasOwn(ruleVersions,p.rules)?'connection_lost':'rules_changed');
   }
   if (action==='play-cancel') {
     await end(db,p.id,'cancelled','cancelled');
@@ -77,7 +77,7 @@ export async function records(db, ctx, url) {
   const {rows}=await db.query(
     'SELECT play_id,course,rules,tenths,finished_at FROM commute_records WHERE user_id=$1 ORDER BY finished_at DESC,play_id LIMIT 26 OFFSET $2',
     [ctx.user.id,(page-1)*25]);
-  return allow({rows:rows.slice(0,25),next:rows.length>25,page,courses});
+  return allow({rows:rows.slice(0,25),next:rows.length>25,page,courses,ruleVersions});
 }
 
 export function pageNumber(url) {
@@ -88,10 +88,12 @@ export function pageNumber(url) {
 export async function ranking(db, ctx, url) {
   const course=url.searchParams.get('course'), page=pageNumber(url);
   if (!knownCourse(course)) return block(400,'course');
+  const version=url.searchParams.get('rules')??rules;
+  if(!Object.hasOwn(ruleVersions,version)) return block(400,'rules');
   const {rows}=await db.query(
     'WITH best AS (SELECT user_id,min(tenths) AS tenths FROM commute_records WHERE course=$1 AND rules=$2 GROUP BY user_id), '+
     'ranked AS (SELECT user_id,tenths,rank() OVER (ORDER BY tenths)::int AS rank FROM best) '+
     'SELECT u.nickname,r.tenths,r.rank,r.user_id=$3 AS mine FROM ranked r JOIN commute_users u ON r.user_id=u.id '+
-    'ORDER BY r.rank,r.user_id LIMIT 26 OFFSET $4',[course,rules,ctx.user.id,(page-1)*25]);
-  return allow({rows:rows.slice(0,25),next:rows.length>25,page,course,rules});
+    'ORDER BY r.rank,r.user_id LIMIT 26 OFFSET $4',[course,version,ctx.user.id,(page-1)*25]);
+  return allow({rows:rows.slice(0,25),next:rows.length>25,page,course,rules:version});
 }

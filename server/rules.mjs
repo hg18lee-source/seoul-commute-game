@@ -1,4 +1,6 @@
-export const rules = 'gongdeok-movement-v2-online-1';
+export const legacyRules = 'gongdeok-movement-v2-online-1';
+export const rules = 'gongdeok-transit-graphics-2';
+export const ruleVersions = {[rules]:'역사 개선 코스',[legacyRules]:'이전 코스'};
 export const courses = {
   'gongdeok-cityhall-rail': {label:'공덕 → 시청 · 5·2호선', transport:'train'},
   'gongdeok-cityhall-bus': {label:'공덕 → 시청 · 7016번', transport:'bus'},
@@ -54,16 +56,17 @@ function board(a,b,stageAt,type,direction,index) {
     &&boardingWindow(a,stageAt,type==='bus'?5:6);
 }
 
-function transition(a,b,stageAt,transport) {
+function transition(a,b,stageAt,transport,version) {
   if (a.hp<=0||!sameTick(a,b)) return false;
   switch (a.stage) {
     case 'street':
       if (transport==='train') {
-        return b.stage==='hall'&&a.busIndex===1&&sameStops(a,b)&&near(a,-5,-24)&&spawn(b,0,14);
+        return b.stage==='hall'&&a.busIndex===1&&sameStops(a,b)&&(version===legacyRules?near(a,-5,-24):a.z<=-32.09&&near(a,-5,-32.1,1.7))
+          &&spawn(b,0,14);
       }
       return near(a,7,-42)&&board(a,b,stageAt,'bus',a.busIndex===17?-1:1,a.busIndex);
     case 'hall':
-      return b.stage==='platform'&&sameStops(a,b)&&near(a,0,1.6)&&spawn(b,0,8);
+      return b.stage==='platform'&&sameStops(a,b)&&(version===legacyRules?near(a,0,1.6):Math.abs(a.x)<=.47&&a.z<=2.06)&&spawn(b,0,8);
     case 'platform': {
       const index=lines[a.line].indexOf(a.station), direction=a.x<0?-1:1;
       if (b.stage==='vehicle') {
@@ -145,7 +148,7 @@ export function validateBatch(play, body, receiptMs) {
       if (!snapshot(before)||!sample(state.point,before)) return {reason:'movement'};
       entry.before=cleanPoint(before);
       if (event.kind==='stage') {
-        if (!transition(before,after,state.stageAt,courses[play.course].transport)) return {reason:'stage_transition'};
+        if (!transition(before,after,state.stageAt,courses[play.course].transport,play.rules)) return {reason:'stage_transition'};
         state.stageAt=after.t;
         if (after.ride) state.vehicleAt=after.t;
       } else if (event.kind==='vehicle') {

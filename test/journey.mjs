@@ -37,11 +37,11 @@ export async function journey(client,setTime,start,course,{pause=false, secondRe
 
   await batch();
   if (course.endsWith('rail')) {
-    await tick(8,-5,-23);
+    await tick(9.1,-4.2,-32.1);
     await stage({stage:'hall',x:0,z:14});
-    await tick(11,0,2);
+    await tick(12.1,0,2);
     await stage({stage:'platform',x:0,z:8});
-    await tick(16.2,4.45,0);
+    await tick(17.3,4.45,0);
     await board('train',1);
     if (pause) {
       await batch('play-progress','pause');
@@ -50,20 +50,20 @@ export async function journey(client,setTime,start,course,{pause=false, secondRe
       paused+=3;
       await batch('play-progress','resume');
     }
-    await tick(69.2,0,-11);
+    await tick(70.3,0,-11);
     await vehicle({index:2,open:true});
-    await tick(75.2);
+    await tick(76.3);
     await vehicle({open:false});
-    await tick(128.2);
+    await tick(129.3);
     await vehicle({index:3,open:true});
     await stage({stage:'platform',station:'충정로',x:0,z:8,ride:null});
-    await tick(132,0,24);
+    await tick(133.1,0,24);
     await stage({stage:'hall',line:'2',x:0,z:14});
-    await tick(135,0,2);
+    await tick(136.1,0,2);
     await stage({stage:'platform',x:0,z:8});
-    await tick(140.2,4.45,0);
+    await tick(141.3,4.45,0);
     await board('train',1);
-    await tick(193.2,0,-11);
+    await tick(194.3,0,-11);
     await vehicle({index:2,open:true});
   } else {
     await tick(13,7,-42);

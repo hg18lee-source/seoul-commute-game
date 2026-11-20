@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>주인공 캐릭터 검토 · 대중교통 출근 게임</title>
+<link rel="stylesheet" href="./preview.css">
+<script type="importmap">{"imports":{"three":"../dist/vendor/three.module.js"}}</script>
+</head>
+<body>
+<main>
+  <header>
+    <p class="project">대중교통 출근 게임</p>
+    <h1>주인공 캐릭터 비교</h1>
+    <p>1차와 1.5차 모델을 같은 크기·조명·카메라에서 비교합니다.</p>
+  </header>
+  <section class="controls" aria-label="비교 카메라">
+    <div class="control-group" aria-label="방향">
+      <button type="button" data-angle="front" aria-pressed="false">정면</button>
+      <button type="button" data-angle="side" aria-pressed="false">측면</button>
+      <button type="button" data-angle="back" aria-pressed="false">후면</button>
+      <button type="button" data-angle="oblique" aria-pressed="true">후면 45°</button>
+      <button type="button" data-angle="game" aria-pressed="false">게임 카메라</button>
+    </div>
+    <div class="control-group" aria-label="거리">
+      <button type="button" data-scale="full" aria-pressed="true">전신</button>
+      <button type="button" data-scale="close" aria-pressed="false">가까이</button>
+    </div>
+  </section>
+  <div class="comparison">
+    <figure>
+      <figcaption><strong>1차 모델</strong><span>원본 GLB</span></figcaption>
+      <canvas id="before" aria-label="1차 모델 3D 보기"></canvas>
+      <p class="model-status" id="baseline-status" role="status">1차 모델을 불러오는 중…</p>
+    </figure>
+    <figure>
+      <figcaption><strong>개선 모델</strong><span>1.5차 · 외형 고도화</span></figcaption>
+      <canvas id="after" aria-label="개선 모델 3D 보기"></canvas>
+      <p class="model-status" id="model-status" role="status">개선 모델을 불러오는 중…</p>
+    </figure>
+  </div>
+  <p id="view-note">전신 · 후면 45°</p>
+  <section id="motion-review" aria-labelledby="motion-heading">
+    <h2 id="motion-heading">이동 애니메이션 비교</h2>
+    <p>미리보기에서 방향키로 이동하고, Shift를 누르면 달립니다. 방향 버튼은 관찰 카메라만 회전합니다.</p>
+    <div class="controls" id="motion-controls">
+      <div class="control-group">
+        <button data-demo="idle" aria-pressed="true">Idle</button>
+        <button data-demo="walk" aria-pressed="false">Walk</button>
+        <button data-demo="run" aria-pressed="false">Run</button>
+        <button id="motion-focus">키보드 조작</button>
+      </div>
+      <div class="control-group">
+        <button data-observe="front" aria-pressed="false">정면</button>
+        <button data-observe="side" aria-pressed="true">측면</button>
+        <button data-observe="back" aria-pressed="false">후면</button>
+      </div>
+    </div>
+    <p id="motion-status" role="status">이동 모델을 불러오는 중…</p>
+    <div class="comparison" id="motion-stage" tabindex="0" aria-label="방향키와 Shift로 조작하는 이동 비교">
+      <figure><figcaption><strong>개선 전</strong><span>기존 게임 모션</span></figcaption><canvas id="motion-before"></canvas></figure>
+      <figure><figcaption><strong>개선 후</strong><span>1.5차 모델 · 새 모션</span></figcaption><canvas id="motion-after"></canvas></figure>
+    </div>
+  </section>
+</main>
+<script type="module" src="./preview.js"></script>
+<script type="module" src="./motion-preview.js"></script>
+</body>
+</html>

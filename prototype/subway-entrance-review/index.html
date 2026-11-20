@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>공덕역 1번 출구 · 지하철 입구 검토</title>
+<link rel="icon" href="data:,"><link rel="stylesheet" href="./review.css">
+</head>
+<body>
+<main>
+<header><h1>공덕역 1번 출구</h1></header>
+<nav aria-label="장면 보기">
+<button data-view="play" aria-pressed="true">3인칭 이동</button>
+<button data-view="entrance" aria-pressed="false">5차 비교 구도</button>
+<button data-view="front" aria-pressed="false">정면</button>
+<button data-view="side" aria-pressed="false">측면</button>
+<button data-view="rear" aria-pressed="false">후면</button>
+<button data-view="stairs" aria-pressed="false">계단</button>
+<button data-view="passage" aria-pressed="false">지하 통로</button>
+<label class="sign-toggle"><input id="hide-signs" type="checkbox"> 상점 글자 가리기</label>
+<label>품질 <select id="quality"><option value="detail">상세</option><option value="light">경량</option></select></label>
+</nav>
+<div class="comparison single" id="comparison">
+<figure>
+<figcaption id="render-title">3D 거리</figcaption>
+<div class="viewport"><canvas id="street" tabindex="0" aria-label="이동할 수 있는 3D 거리"></canvas><p role="status" id="status">거리와 주인공을 불러오는 중…</p></div>
+</figure>
+</div>
+<p id="hint">3D 화면을 클릭하면 방향키로 이동하고 Shift로 달릴 수 있습니다. ↑로 골목을 나와 큰길을 따라 이동하세요. 입구에서 좌우 계단 중 하나로 내려갈 수 있습니다.</p>
+<p class="links"><a href="./inspect.html">원본 모델 검사</a><a href="../street-realism-v5-review/index.html">기존 5차 장면</a></p>
+</main>
+<script type="module" src="./review.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "seoul-commute-online",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": "22.x"},
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node --env-file-if-exists=.env.local scripts/dev.mjs",
+    "migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
+    "admin:create": "node --env-file-if-exists=.env.local scripts/admin.mjs",
+    "audit:prune": "node --env-file-if-exists=.env.local scripts/prune.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "^2.0.2",
+    "@vercel/functions": "^3.3.1",
+    "pg": "^8.16.3"
+  }
+}

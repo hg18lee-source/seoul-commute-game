@@ -1,0 +1,17 @@
+:root {font: 15px/1.55 system-ui,sans-serif;color:#27342f;background:#f3f1eb}
+* {box-sizing:border-box}
+body {margin:0}
+main {max-width:1530px;margin:auto;padding:22px 28px}
+header p {margin:0;color:#53655b}
+.label {font-weight:700}
+h1 {font-size:clamp(30px,4vw,52px);line-height:1.17;letter-spacing:-.055em;margin:.16em 0}
+.toolbar,.toolbar div {display:flex;flex-wrap:wrap;gap:5px}
+.toolbar {margin:14px 0 10px;gap:10px}
+.toolbar div {border:1px solid #cfdbd1;padding:3px;border-radius:8px;background:#fff}
+button {font:inherit;font-weight:650;cursor:pointer;background:#fff;color:#28372f;border:0;border-radius:5px;padding:7px 11px}
+button:hover {background:#ebf0e9}
+button[aria-pressed=true] {color:#fff;background:#2e5547}
+button:focus-visible,canvas:focus-visible {outline:3px solid #568d72;outline-offset:2px}
+.stage {position:relative;overflow:hidden;border:1px solid #c8d1c9;border-radius:12px;background:#c6d3c6}
+canvas {display:block;width:100%;height:clamp(360px,68vh,920px)}
+#status {position:absolute;top:12px;left:12px;margin:0;padding:6px 12px;border-radius:7px;color:#fff;background:#253a31;pointer-events:none}

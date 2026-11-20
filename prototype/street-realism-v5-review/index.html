@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>서울 거리 · 준실사 검토</title>
+<link rel="stylesheet" href="./review.css"></head>
+<body>
+<main>
+<header><p>대중교통 출근 게임 · 그래픽 검토</p><h1>공덕 출근길 · 5차 거리 검토</h1></header>
+<nav aria-label="장면 보기">
+<button data-view="match" aria-pressed="true">사진 구도</button>
+<button data-view="play" aria-pressed="false">3인칭 이동</button>
+<button data-view="overview" aria-pressed="false">다른 각도</button>
+<button data-view="paving" aria-pressed="false">보도</button>
+<button data-view="shops" aria-pressed="false">상점</button>
+<button data-view="diner" aria-pressed="false">분식점 근접</button>
+<button data-view="optics" aria-pressed="false">안경점 근접</button>
+<button data-view="entrance" aria-pressed="false">역 입구</button>
+<button data-view="passage" aria-pressed="false">계단 아래</button>
+<button data-view="alley" aria-pressed="false">주거 골목</button>
+<button data-view="reverse" aria-pressed="false">반대 방향</button>
+<button data-view="tree" aria-pressed="false">나무</button>
+<label class="sign-toggle"><input id="hide-signs" type="checkbox"> 상점 글자 가리기</label><label>품질 <select id="quality"><option value="detail">상세</option><option value="light">경량</option></select></label>
+</nav>
+<div class="comparison" id="comparison">
+<figure id="reference"><figcaption>참고 사진</figcaption><img src="../references/street-main.png" alt="차도 왼쪽, 상점과 지하철 입구가 오른쪽에 있는 서울 거리"></figure>
+<figure><figcaption id="render-title">3D 재구성 · 고정 비교 카메라</figcaption><div class="viewport"><canvas id="street" tabindex="0" aria-label="실제 3D 거리"></canvas><p role="status" id="status">장면과 주인공을 불러오는 중…</p></div></figure>
+</div>
+<p id="hint"><strong>3인칭 이동</strong>은 주거 골목에서 시작합니다. 방향키와 Shift로 골목을 나와 큰길을 따라 공덕역 입구까지 이동하세요. ↑로 골목을 나와 큰길로 이어집니다. 개방된 역 계단은 지하 통로까지 내려갈 수 있습니다.</p>
+</main><script type="module" src="./review.js"></script>
+</body></html>

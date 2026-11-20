@@ -27,3 +27,7 @@ Sites 서버에는 `SEOUL_OPENAPI_KEY`와 `DATA_GO_KR_SERVICE_KEY`를 비밀 환
 - GitHub Pages에서는 교통 데이터 확인 요청을 기존 공개 Sites 서버의 `/api/transit`으로 보냅니다. 서버가 공개 데이터 응답에 CORS 헤더를 제공하며, 인증키는 계속 Sites 서버에 보관합니다.
 - Sites 서버 변경도 배포되어야 GitHub Pages의 교통 데이터 조회가 작동합니다. 게임 플레이 자체는 정적 파일로 실행됩니다.
 - 기본 상대 경로를 사용하므로 저장소 하위 경로에서도 게임 자산을 불러올 수 있습니다.
+
+## 주말 개발 인수인계 브랜치
+
+기존 GitHub Pages의 루트 파일은 그대로 두고, 온라인 본편을 `online-game/`, 프로토타입·그래픽 검토 자료를 `prototype/`, 배포 확인 자료를 `evidence/`에 보관하는 구조입니다. 개발 환경, DB 분리, 자산 출처, 제외한 원본은 [HANDOFF.md](HANDOFF.md)와 [ASSET_TRANSFER.md](ASSET_TRANSFER.md)를 확인하세요. 온라인 앱을 실행하려면 `cd online-game && npm ci && npm run build && npm run dev`를 사용합니다.

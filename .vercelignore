@@ -1,0 +1,9 @@
+.git
+.env*
+node_modules
+public-online
+test
+dist/server
+worker
+*-review
+references

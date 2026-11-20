@@ -1,4 +1,6 @@
-.env
-.env.*
-dist/server/
-dist/.openai/
+
+node_modules/
+public-online/
+.vercel/
+.env*
+!.env.example

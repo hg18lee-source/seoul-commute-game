@@ -1,5 +1,7 @@
+import { loadCommuter, movementSpeed } from './hero/motion.js';
 import { World } from './world.js';
-import { showTraffic } from './traffic-data.js';
+import { api, createPlay, currentAccount, element, setAccount } from './online.js';
+import { accountInterface } from './account-ui.js';
 
 const $ = id => document.getElementById(id);
 const keys = new Set();
@@ -19,12 +21,7 @@ const routes = [
   {name:'직행 · 7016번', detail:'공덕역1번출구 → 북창동·소공동주민센터건너', minutes:43},
 ];
 const events = [45, 115, 195];
-const movementSpeed = Object.freeze({walk:3.6, run:5.4});
-// Preserve earlier records under their original key; faster movement is a new condition.
-const recordKey = 'seoul-commute.prototype.best.movement-v2';
-const profileKey = 'seoul-commute.prototype.nickname';
-const load = key => { try { return localStorage.getItem(key); } catch { return null; } };
-const save = (key, value) => { try { localStorage.setItem(key, value); } catch {} };
+
 const pad = n => String(n).padStart(2, '0');
 const clock = seconds => {
   const mins = 480 + Math.floor(seconds / 10);
@@ -61,47 +58,83 @@ function chime() {
   tone.start();
   tone.stop(audio.currentTime + .23);
 }
-function stage(mode, data={}) {
-  run.stage = mode;
-  run.stageAt = run.time;
-  world.setStage(mode, data);
+let connection, starting=false;
+const selectedCourses=['gongdeok-cityhall-rail','gongdeok-cityhall-bus'];
+const ui=accountInterface({openDialog,closeDialog,button,menu,start,timeText});
+
+function snapshot() {
+  const {x,z}=world.hero.position;
+  const {time:t,hp,stage,line,station,busIndex,ride:current}=run;
+  const ride=current?{type:current.type,index:current.index,direction:current.direction,open:current.open,bell:current.bell,
+    grip:run.grip,seated:run.seated}:null;
+  return {t,x,z,hp,stage,line,station,busIndex,ride};
+}
+function capture(kind,before) { connection?.event(kind,before); }
+function stage(mode,data={},before) {
+  run.stage=mode;
+  run.stageAt=run.time;
+  world.setStage(mode,data);
+  if (before) capture('stage',before);
 }
 function menu() {
-  run = null;
-  paused = phone = false;
+  connection?.cancel();
+  connection=undefined;
+  run=null;
+  paused=phone=false;
   keys.clear();
-  $('dialog').hidden = $('hud').hidden = $('mobile-controls').hidden = true;
+  $('dialog').hidden=$('hud').hidden=$('mobile-controls').hidden=true;
   document.body.classList.remove('playing');
-  world.setStage('street', {intro:true});
-  $('screen').innerHTML = '<section class="intro panel"><p class="eyebrow">공덕동 → 시청</p><h1>대중교통<br>출근 게임</h1><p>08:00에 집을 나섭니다. 체력이 떨어지기 전에 시청역 근처 회사에 도착하세요.</p><div class="intro-meta"><span>체력 100</span><span>지하철 · 7016번</span></div><div id="menu-actions" class="button-row"></div><p class="small-note">방향키 이동 · Shift 달리기 · M 길찾기 · E 상호작용</p></section>';
-  $('menu-actions').append(button('Play', start, 'btn light'), button('시연용 로그인·기록', demo, 'btn'),
-    button('교통 데이터 확인', () => showTraffic(openDialog, closeDialog), 'btn'));
+  world?.setStage('street',{intro:true});
+  ui.renderMenu();
 }
-function demo() {
-  openDialog('<h2>시연용 로그인·기록</h2><p>닉네임과 개인 최고 기록은 이 브라우저에만 저장됩니다. 온라인 계정·랭킹은 제공하지 않습니다.</p><label>닉네임 <input id="nickname" maxlength="20" autocomplete="off"></label><p id="demo-best"></p><div id="dialog-actions" class="button-row"></div>');
-  $('nickname').value = load(profileKey) ?? '';
-  const best = Number(load(recordKey));
-  $('demo-best').textContent = best > 0 ? '이 브라우저의 최고 기록 ' + timeText(best) : '저장된 완주 기록이 없습니다.';
-  $('dialog-actions').append(button('시연 프로필 저장', () => { save(profileKey, $('nickname').value.trim()); closeDialog(); }), button('닫기', closeDialog));
-}
-function start() {
+async function start(course) {
+  if (starting||!currentAccount()||!selectedCourses.includes(course)) return;
+  const actions=$('dialog-actions'), status=$('course-status')??element('p');
+  if (!status.isConnected) actions?.before(status);
+  if (!world) {status.textContent='3D 장면을 아직 열 수 없습니다. WebGL 2 지원 여부를 확인해 주세요.';return;}
+  starting=true;
+  status.textContent='공식 플레이를 발급하는 중…';
+  const oldButtons=[...(actions?.querySelectorAll('button')??[])];
+  for (const item of oldButtons) item.disabled=true;
+  let issued;
+  try {issued=await api('play-start',{course});}
+  catch (error) {ui.showError(error,status);}
+  finally {starting=false;for (const item of oldButtons) item.disabled=false;}
+  if (!issued) return;
+  if (actions&&!actions.isConnected) {api('play-cancel',{id:issued.id}).catch(()=>{});return;}
   try {
     audio ||= new AudioContext();
-    audio.resume().catch(() => {});
+    audio.resume().catch(()=>{});
   } catch {}
-  run = {time:0, hp:100, route:0, stage:'street', stageAt:0, line:'5', station:'공덕',
-    ride:null, disruption:null, eventIndex:0, hitAt:-2, grip:false, seated:false, motion:false,
-    busIndex:1, platformBell:false, done:false};
-  phone = paused = false;
+  run={time:0,hp:100,route:selectedCourses.indexOf(course),course,stage:'street',stageAt:0,line:'5',station:'공덕',
+    ride:null,disruption:null,eventIndex:0,hitAt:-2,grip:false,seated:false,motion:false,busIndex:1,done:false};
+  phone=paused=false;
   closeDialog();
   keys.clear();
   $('screen').replaceChildren();
-  $('hud').hidden = false;
-  $('mobile-controls').hidden = false;
+  $('hud').hidden=$('mobile-controls').hidden=false;
   document.body.classList.add('playing');
-  stage('street', {spawnX:-5, spawnZ:15});
+  stage('street',{spawnX:-5,spawnZ:15});
+  priorFrame=performance.now();
+  connection=createPlay(issued.id,snapshot,playAborted);
+  connection.sync();
+  if (document.hidden||!document.hasFocus()) pause();
   refresh();
   notice('M을 눌러 출근 경로를 확인하세요.');
+}
+function playAborted(error,saving) {
+  if (!run) return;
+  connection=undefined;
+  run.done=true;
+  paused=phone=false;
+  keys.clear();
+  $('hud').hidden=$('mobile-controls').hidden=true;
+  if (error.status===401) setAccount(null);
+  openDialog('<h2>출근 종료</h2><p id="abort-reason"></p><div id="dialog-actions" class="button-row"></div>');
+  $('abort-reason').textContent=saving?'저장 응답을 받지 못했습니다. 내 기록에서 결과를 확인해 주세요.':
+    error.message==='connection_lost'?'연결이 끊겨 출근이 종료되었습니다. 이번 플레이 기록은 저장되지 않았습니다.':
+    '서버가 이번 플레이를 종료했습니다. 공식 기록에 반영되지 않았습니다.';
+  $('dialog-actions').append(button('메인 화면',menu));
 }
 function openDialog(html, className='dialog-card') {
   $('dialog').innerHTML = '<section class="'+ className +'" role="dialog" aria-modal="true">'+html+'</section>';
@@ -110,11 +143,15 @@ function openDialog(html, className='dialog-card') {
 function closeDialog() { $('dialog').hidden = true; $('dialog').replaceChildren(); }
 function pause() {
   if (!run || run.done) return;
+  if (!connection?.check()) return;
   paused = !paused;
+  priorFrame=performance.now();
+  capture(paused?'pause':'resume');
+  connection.sync();
   keys.clear();
   if (paused) {
-    openDialog('<h2>일시정지</h2><p>게임 시계와 출근 기록이 멈췄습니다.</p><div id="dialog-actions" class="button-row"></div>');
-    $('dialog-actions').append(button('계속하기', pause), button('메인 화면', menu));
+    openDialog('<h2>일시정지</h2><p>게임 시계와 출근 기록이 멈췄습니다.</p><div id="dialog-actions" class="button-row"></div>','dialog-card online-pause');
+    $('dialog-actions').append(button('계속 출근', pause), button('메인 화면', menu));
   } else if (phone) drawPhone();
   else closeDialog();
 }
@@ -132,7 +169,8 @@ function options() {
     const target = run.line === '5' ? '충정로 환승 → 시청' : '시청';
     return [{...routes[0],id:0,detail:locationName()+' → '+target,minutes:run.line==='5'?24:11}];
   }
-  return routes.map((route,id)=>({...route,id,minutes:Math.max(1,route.minutes-Math.floor(run.time/23))}));
+  const route=routes[run.route];
+  return [{...route,id:run.route,minutes:Math.max(1,route.minutes-Math.floor(run.time/23))}];
 }
 function drawPhone() {
   const list = options();
@@ -165,9 +203,9 @@ function damage(points, reason) {
   $('damage').classList.add('flash');
   notice(reason+' −'+points);
 }
-function platform() {
+function platform(before) {
   const line = trainLines[run.line], index = line.indexOf(run.station);
-  stage('platform',{station:run.station,line:run.line,neighbors:[line[index-1]??'회차',line[index+1]??'회차'],spawnZ:8});
+  stage('platform',{station:run.station,line:run.line,neighbors:[line[index-1]??'회차',line[index+1]??'회차'],spawnZ:8},before);
 }
 function doorTiming(openSeconds) {
   const cycle = openSeconds === 5 ? 42 : 48;
@@ -175,10 +213,11 @@ function doorTiming(openSeconds) {
   return {open:remaining<openSeconds,remaining:remaining<openSeconds?openSeconds-remaining:cycle-remaining};
 }
 function ride(type, direction) {
+  const before=snapshot();
   const index = type === 'bus' ? run.busIndex : trainLines[run.line].indexOf(run.station);
   run.ride = {type,index,direction,line:run.line,open:false,nextAt:run.time+(type==='bus'?13:53),bell:false,warned:false};
   run.grip = run.seated = false;
-  stage('vehicle',{type,line:run.line,next:nextName(run.ride),spawnZ:4});
+  stage('vehicle',{type,line:run.line,next:nextName(run.ride),spawnZ:4},before);
   notice(type==='bus'?'교통카드 확인 · 7016 탑승':'열차 탑승');
 }
 function stopsFor(r) { return r.type==='bus'?busStops:trainLines[r.line]; }
@@ -193,6 +232,7 @@ function rideStep() {
     notice('문이 곧 닫힙니다.');
   }
   if (run.time<r.nextAt) return;
+  const before=snapshot();
   if (r.open) {
     r.open=false;
     r.warned=false;
@@ -208,21 +248,22 @@ function rideStep() {
     notice('정차 · '+stopName(r));
     if (phone && !paused) drawPhone();
   }
+  capture('vehicle',before);
 }
 function canExit(r) { return r.open && (r.type==='train'||r.bell||r.index===busStops.length-1); }
 function alight() {
-  const r=run.ride;
+  const before=snapshot(),r=run.ride;
   run.ride=null;
   run.grip=run.seated=false;
   if ((r.type==='bus'&&r.index===16)||(r.type==='train'&&stopName(r)==='시청')) {
-    stage('office',{station:'시청',spawnZ:34});
+    stage('office',{station:'시청',spawnZ:34},before);
   } else if (r.type==='bus') {
     run.busIndex=r.index;
-    stage('street',{spawnX:7,spawnZ:-38});
+    stage('street',{spawnX:7,spawnZ:-38},before);
     notice('정류장에서 7016번에 다시 탈 수 있습니다.');
   } else {
     run.station=stopName(r);
-    platform();
+    platform(before);
   }
 }
 function action() {
@@ -231,24 +272,25 @@ function action() {
   if (r) {
     if (run.seated) { run.seated=false; return; }
     if (run.grip) { notice('Space로 손잡이를 놓으세요.'); return; }
-    if (r.type==='bus'&&spot?.id==='bell') { r.bell=true; notice('하차 벨을 눌렀습니다.'); }
+    if (r.type==='bus'&&spot?.id==='bell') { const before=snapshot(); r.bell=true; capture('bell',before); notice('하차 벨을 눌렀습니다.'); }
     else if (r.type==='bus'&&spot?.id==='alight'&&canExit(r)) alight();
     else if (spot?.seat) run.seated=true;
     return;
   }
-  if (run.stage==='street'&&spot?.id==='station'&&run.busIndex===1) {
+  const before=snapshot();
+  if (run.stage==='street'&&spot?.id==='station'&&run.busIndex===1&&run.route===0) {
     run.station='공덕';
-    stage('hall',{station:run.station,line:run.line});
-  } else if (run.stage==='street'&&spot?.id==='bus') {
+    stage('hall',{station:run.station,line:run.line},before);
+  } else if (run.stage==='street'&&spot?.id==='bus'&&run.route===1) {
     if (doorTiming(5).open) ride('bus',run.busIndex===busStops.length-1?-1:1);
     else notice('앞문이 열리면 E로 탑승하세요.');
-  } else if (run.stage==='hall'&&spot?.id==='gate') platform();
+  } else if (run.stage==='hall'&&spot?.id==='gate') platform(before);
   else if (run.stage==='platform'&&spot?.id==='exit') {
     if (run.station==='충정로') {
       run.line=run.line==='5'?'2':'5';
-      stage('hall',{station:run.station,line:run.line});
+      stage('hall',{station:run.station,line:run.line},before);
       notice(run.line+'호선 환승 통로');
-    } else if (run.station==='공덕') stage('street',{spawnX:-5,spawnZ:-20});
+    } else if (run.station==='공덕') stage('street',{spawnX:-5,spawnZ:-20},before);
     else notice('반대편 승강장에서 되돌아갈 수 있습니다.');
   }
 }
@@ -273,18 +315,27 @@ function eventStep(running) {
   } else if (!event.ride && !run.ride && running) damage(6,'젖은 바닥에서 미끄러짐');
   else notice('해프닝을 안전하게 통과했습니다.');
 }
-function finish(success) {
+async function finish(success) {
   run.done=true;
   phone=false;
   keys.clear();
   $('hud').hidden=$('mobile-controls').hidden=true;
-  const prior=Number(load(recordKey));
-  const elapsed=Math.round(run.time*10)/10;
-  if (success) save(recordKey,Math.min(prior||Infinity,elapsed));
+  const active=connection, course=run.course;
+  let result;
+  if (success) {
+    openDialog('<h2>도착</h2><p role="status">서버에서 기록을 검증하는 중…</p>');
+    try {result=await active.finish();}
+    catch (error) {
+      if (connection===active) playAborted(error,error.status===undefined||error.status>=500);
+      return;
+    }
+  } else active.cancel();
+  connection=undefined;
   openDialog(success
-    ? '<section class="result"><div class="result-symbol">↗</div><h2>도착</h2><div class="time-label">이번 기록</div><div class="time-main">'+timeText(elapsed)+'</div>'+(prior>0?'<div class="time-label">최고 기록 · 이 브라우저</div><div class="time-best">'+timeText(Math.min(prior,elapsed))+'</div>':'')+'</section><div id="dialog-actions" class="button-row"></div>'
+    ? '<section class="result"><h2>도착</h2><div class="time-label">이번 기록</div><div class="time-main">'+timeText(result.tenths/10)+'</div>'+
+      (result.best===null?'':'<div class="time-label">최고 기록</div><div class="time-best">'+timeText(result.best/10)+'</div>')+'</section><div id="dialog-actions" class="button-row"></div>'
     : '<h2>출근 실패</h2><p>체력이 모두 소진되었습니다.</p><div id="dialog-actions" class="button-row"></div>');
-  $('dialog-actions').append(button('재도전',start),button('메인 화면',menu));
+  $('dialog-actions').append(button('재도전',()=>start(course)),button('메인 화면',menu));
 }
 function refresh() {
   $('hp').textContent=Math.ceil(run.hp);
@@ -309,11 +360,11 @@ function refresh() {
     if (run.stage==='street') {
       if (world.streetBus) world.streetBus.position.z=-42-Math.min(45,Math.max(0,doorTiming(5).remaining-1)*3);
       guide=run.route===1||run.busIndex!==1?'7016 정류장 · 큰길 오른쪽 아래':'공덕역 입구 · 골목 왼쪽 앞';
-      if (spot?.id==='bus') {
+      if (spot?.id==='bus'&&run.route===1) {
         const door=doorTiming(5);
         hint=door.open?'E · 7016 앞문 승차 · '+Math.ceil(door.remaining)+'초':'다음 7016까지 '+Math.ceil(door.remaining)+'초';
       }
-      if (spot?.id==='station'&&run.busIndex===1) hint='E · 공덕역 진입';
+      if (spot?.id==='station'&&run.busIndex===1&&run.route===0) hint='E · 공덕역 진입';
     }
     if (run.stage==='hall') { guide='앞쪽 개찰구에서 교통카드를 찍으세요'; if (spot?.id==='gate') hint='E · 교통카드 찍기'; }
     if (run.stage==='platform') {
@@ -346,6 +397,7 @@ function step(dt) {
   if (run.motion) world.crowdCollision(running,dt,()=>{
     if (run.time-run.hitAt>=2) { run.hitAt=run.time; damage(3,'보행자 충돌'); }
   });
+  world.advanceHero(dt,{running,grip:run.grip,seated:run.seated});
   eventStep(running);
   if (run.hp<=0) { finish(false); return; }
   if (run.stage==='office'&&near(0,-26,1.2)) { finish(true); return; }
@@ -367,7 +419,7 @@ function render(now) {
   }
   if (now>toastUntil) $('toast').classList.remove('show');
   if (!paused) world.update(Math.min(dt,.05),run?.time??now/1000,{
-    intro:!run,moving:!!run?.motion&&!run.done,running:keys.has('Shift'),grip:run?.grip,seated:run?.seated,
+    intro:!run,ended:!!run?.done,seated:run?.seated,
     rideMoving:!!run?.ride&&!run.ride.open&&!run.done,
   });
   requestAnimationFrame(render);
@@ -391,24 +443,37 @@ function bind() {
     if (!event.repeat&&key===' ') grip();
   });
   addEventListener('keyup',event=>keys.delete(event.key));
-  addEventListener('blur',()=>keys.clear());
+  function suspend() {
+    keys.clear();
+    if (run&&!run.done&&!paused) pause();
+  }
+  addEventListener('blur',suspend);
+  document.addEventListener('visibilitychange',()=>{if (document.hidden) suspend();});
   $('phoneButton').onclick=togglePhone;
   $('pauseButton').onclick=pause;
-  $('settings').onclick=()=>run&&!run.done?pause():demo();
-  $('brand').onclick=event=>{event.preventDefault(); if (run&&!run.done) pause(); else menu();};
+  $('settings').onclick=()=>{
+    if (run&&!run.done) return pause();
+    if (connection) return;
+    openDialog('<h2>조작</h2><p>방향키 이동 · Shift 달리기 · M 길찾기 · E 상호작용 · Esc 일시정지</p><button class="btn" id="settings-close">닫기</button>');
+    $('settings-close').onclick=closeDialog;
+  };
+  $('brand').onclick=event=>{event.preventDefault(); if (run&&!run.done) pause(); else if (!connection) menu();};
   for (const b of document.querySelectorAll('[data-key]')) {
     b.onpointerdown=event=>{event.preventDefault(); b.setPointerCapture(event.pointerId); if (!phone&&!paused) keys.add(b.dataset.key);};
     b.onpointerup=b.onpointercancel=b.onlostpointercapture=()=>keys.delete(b.dataset.key);
   }
   for (const b of document.querySelectorAll('[data-action]')) b.onclick=()=>{ if (run&&!run.done) (b.dataset.action==='e'?action:grip)(); };
 }
+try {setAccount((await api('session')).user);} catch {}
+menu();
+bind();
+$('loading').hidden=true;
+if (!currentAccount()&&new URLSearchParams(location.search).has('admin')) ui.accountForm('admin-login');
 try {
-  world = new World($('world'));
-  menu();
-  bind();
+  world=new World($('world'),await loadCommuter());
+  if (!run) world.setStage('street',{intro:true});
+  priorFrame=performance.now();
   requestAnimationFrame(render);
 } catch {
-  $('screen').innerHTML='<section class="panel"><h1>3D 화면을 시작하지 못했습니다.</h1><p>WebGL 2를 지원하고 하드웨어 가속이 켜진 브라우저에서 다시 열어 주세요.</p></section>';
-} finally {
-  $('loading').hidden=true;
+  notice('3D 화면을 열 수 없습니다. WebGL 2 지원 여부를 확인해 주세요.');
 }

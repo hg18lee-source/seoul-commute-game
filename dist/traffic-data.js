@@ -57,13 +57,10 @@ export async function showTraffic(openDialog, closeDialog) {
   close.onclick = closeDialog;
   close.focus();
   try {
-    // GitHub Pages hosts the game assets; the existing Sites worker retains the secret keys.
-    const endpoint = location.hostname.endsWith('.github.io')
-      ? 'https://seoul-commute-play.reassuringrosemary8.chatgpt.site/api/transit'
-      : './api/transit';
-    const response = await fetch(endpoint, {signal:AbortSignal.timeout(24000)});
-    if (!response.ok) throw new Error('response');
-    showData(container, await response.json());
+    const response=await fetch('/api/transit',{signal:AbortSignal.timeout(14000)});
+    const result=await response.json();
+    if (!result.stations||!result.bus) throw new Error('response');
+    showData(container,result);
   } catch {
     container.textContent = '조회 실패 · 서버에 연결할 수 없습니다. 게임은 계속 이용할 수 있습니다.';
   }

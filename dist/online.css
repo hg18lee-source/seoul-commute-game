@@ -1,0 +1,30 @@
+#dialog .dialog-card { max-height: calc(100dvh - 32px); overflow: auto; }
+#dialog .online-pause { box-shadow: 0 0 0 200vmax #142b30; }
+.btn:disabled { opacity: .55; cursor: progress; }
+#account-status, #course-status, #record-status { min-height: 1.35em; }
+.online-records { padding-left: 1.4em; font-variant-numeric: tabular-nums; }
+.online-records li { margin: .4em 0; }
+.online-records .mine { color: #145846; font-weight: 700; }
+#record-filter select { max-width: 100%; padding: .4em; }
+a.btn { text-decoration: none; }
+body.admin { margin: 0; background: #f4f3e9; color: #173739; font: 15px/1.5 system-ui,sans-serif; }
+.admin main { max-width: 1360px; margin: auto; padding: 1.7rem; }
+.admin h1, .admin h2 { margin: .1rem 0 .65rem; }
+.admin header, .admin form, .admin-pages { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.admin header { justify-content: space-between; }
+.admin form { margin: .9rem 0; align-items: end; }
+.admin form label { display: grid; gap: .2rem; }
+.admin button,.admin input,.admin select { font: inherit; padding: .35rem .55rem; border: 1px solid #96aba0; border-radius: .3rem; background: white; color: inherit; }
+.admin button { cursor: pointer; }
+.admin button:disabled { opacity: .5; cursor: default; }
+.admin a { color: #145846; }
+.admin section, #summary { padding: 1rem; background: white; border: 1px solid #d5ddd3; border-radius: .6rem; }
+.admin-columns { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin: .8rem 0; }
+.table-wrap { overflow-x: auto; }
+.admin table { width: 100%; border-collapse: collapse; text-align: left; font-variant-numeric: tabular-nums; }
+.admin th,.admin td { padding: .45rem; border-bottom: 1px solid #e0e5db; }
+.admin td:first-child { min-width: 9rem; }
+.admin-pages { margin-top: .9rem; }
+.admin dialog { max-width: min(92vw, 800px); border: 1px solid #d5ddd3; border-radius: .6rem; }
+.admin pre { overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 680px) { .admin-columns { grid-template-columns: 1fr; } .admin main { padding: .8rem; } }

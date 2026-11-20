@@ -2,6 +2,7 @@ import * as T from './vendor/three.module.js';
 import { GLTFLoader } from './hero/vendor/loaders/GLTFLoader.js';
 
 const loader = new GLTFLoader();
+const entranceTemplates=new WeakMap();
 export const entrance = { x: -5, z: -25.5, scale: .86 };
 export const entranceLanding = -32.1;
 export const gateZ = 3.35;
@@ -45,6 +46,11 @@ export async function loadTransit(onStatus) {
 }
 
 export function placeEntrance(source, parent) {
+  const template=entranceTemplates.get(source);
+  if(template){
+    parent.add(template.clone());
+    return;
+  }
   const root=source.scene.clone();
   root.name='공덕역 1번 출구';
   root.position.set(entrance.x,0,entrance.z);
@@ -90,7 +96,8 @@ export function placeEntrance(source, parent) {
     });
   }
   root.traverse(o=>{if(o.isMesh)o.userData.sharedGeometry=true;});
-  parent.add(root);
+  entranceTemplates.set(source,root);
+  parent.add(root.clone());
 }
 
 export function placeGate(source,parent) {
@@ -116,12 +123,12 @@ export function placeGate(source,parent) {
 
 const BODY=new T.BoxGeometry(1,1,1);
 const TIRE=new T.CylinderGeometry(.32,.32,.22,12);
+const paint=[0x38464e,0x919c9f].map(color=>new T.MeshStandardMaterial({color,roughness:.43,metalness:.20}));
+const glass=new T.MeshStandardMaterial({color:0x47616a,roughness:.32,metalness:.24});
+const rubber=new T.MeshStandardMaterial({color:0x292d2c,roughness:1});
 export function addTraffic(parent) {
   const lane=new T.Group();
   parent.add(lane);
-  const paint=[0x38464e,0x919c9f].map(color=>new T.MeshStandardMaterial({color,roughness:.43,metalness:.20}));
-  const glass=new T.MeshStandardMaterial({color:0x47616a,roughness:.32,metalness:.24});
-  const rubber=new T.MeshStandardMaterial({color:0x292d2c,roughness:1});
   function mesh(g,m,p,x,y,z) {
     const o=new T.Mesh(g,m);
     o.position.set(x,y,z);o.userData.sharedGeometry=true;p.add(o);return o;

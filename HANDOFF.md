@@ -36,10 +36,9 @@ git clone --branch handoff/weekend-continuation https://github.com/hg18lee-sourc
 cd seoul-commute-game/online-game
 npm ci
 npm run build
-npm run dev
 ```
 
-브라우저에서 `http://127.0.0.1:8010/`을 엽니다. DB 환경 변수가 없는 상태에서는 정적 첫 화면은 열릴 수 있지만 회원가입·로그인·플레이 API를 검증할 수 없습니다. 계정 기능을 시험하려면 먼저 아래와 같이 별도 로컬 개발 DB를 설정하세요.
+정적 첫 화면과 게임 자산만 확인하려면 `online-game/`에서 `python3 -m http.server 8010 --directory public-online`을 실행하고 `http://127.0.0.1:8010/`을 엽니다. 이 방식은 API를 제공하지 않습니다. 회원가입·로그인·플레이 API를 실행하려면 아래의 별도 로컬 DB와 `.env.local`을 먼저 준비한 뒤 `npm run migrate && npm run dev`를 실행하세요.
 
 별도 프로토타입을 실행할 때는 새 터미널에서 다음을 실행하고 `http://127.0.0.1:8000/`을 엽니다.
 
@@ -77,7 +76,7 @@ python3 -m http.server --directory dist 8000
 
 Vercel CLI에서 기존 프로젝트를 조회했으며 Git Repository는 연결되지 않은 상태라 이번 GitHub push가 Vercel Preview/Production 배포를 자동 실행하지 않습니다. Production은 수동 CLI 배포로 관리합니다. 프로젝트 설정은 현재 Node.js 26.x로 보고됐지만 `online-game/package.json`은 Node.js 22.x를 요구하므로, 새 컴퓨터에서 재배포하기 전 Vercel Node 설정과 엔진 범위를 맞추세요.
 
-새 PC에서 계정 연결이 필요하면 본인 브라우저에서 GitHub/Vercel/Neon 로그인과 권한 승인을 직접 진행합니다. CLI 토큰·DB 문자열·관리자 암호를 문서나 채팅에 붙이지 않습니다. 이 저장소의 GitHub push 자체는 Pages의 `main`을 변경하지 않습니다. 단, GitHub/Vercel 프로젝트 설정은 계정 소유자가 별도로 확인하고, 새 브랜치 Preview 자동 빌드가 설정되어 있으면 Preview만 생성될 수 있습니다. Production 배포 브랜치 `main`은 건드리지 않았습니다.
+새 PC에서 추가로 계정을 연결할 때는 본인 브라우저에서 GitHub/Vercel/Neon 로그인과 권한 승인을 직접 진행합니다. CLI 토큰·DB 문자열·관리자 암호를 문서나 채팅에 붙이지 않습니다. 이 저장소의 GitHub push 자체는 Pages의 `main`을 변경하지 않습니다. Vercel Git 저장소도 연결되어 있지 않아 자동 Preview/Production 배포가 발생하지 않습니다. Production 배포 브랜치 `main`은 건드리지 않았습니다.
 
 ## 자산·라이선스와 제외
 

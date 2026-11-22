@@ -4,9 +4,9 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 const source=new URL('../dist/',import.meta.url);
 const output=new URL('../public-online/',import.meta.url);
 const files=[
-  'game.js','world.js','gongdeok-street.js','storefronts.js','transit-scene.js',
-  'traffic-data.js','style.css','online.js','account-ui.js','online.css',
-  'hero/commuter.glb','hero/motion.js','hero/vendor/loaders/GLTFLoader.js',
+  'game.js','journey.js','world.js','gongdeok-street.js','storefronts.js','transit-scene.js',
+  'style.css','online.js','account-ui.js','online.css',
+  'hero/commuter.glb','hero/motion.js','hero/npc.js','hero/vendor/loaders/GLTFLoader.js',
   'hero/vendor/utils/BufferGeometryUtils.js',
   'transit-assets/gongdeok-entrance.glb','transit-assets/ticket-gate.glb',
   'vendor/THREE-LICENSE.txt','vendor/three.core.js','vendor/three.module.js',

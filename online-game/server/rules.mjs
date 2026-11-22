@@ -1,14 +1,14 @@
+import { BUS_STOPS, CHECKPOINTS, COURSE, COURSES, TRAIN_LINES } from '../dist/journey.js';
+
 export const legacyRules = 'gongdeok-movement-v2-online-1';
-export const rules = 'gongdeok-transit-graphics-2';
-export const ruleVersions = {[rules]:'역사 개선 코스',[legacyRules]:'이전 코스'};
-export const courses = {
-  'gongdeok-cityhall-rail': {label:'공덕 → 시청 · 5·2호선', transport:'train'},
-  'gongdeok-cityhall-bus': {label:'공덕 → 시청 · 7016번', transport:'bus'},
-};
+export const previousRules = 'gongdeok-chungjeongno-walk-3';
+export const rules = 'gongdeok-chungjeongno-walk-4';
+export const ruleVersions = {[rules]:'공덕 → 충정로 · 순수 시간 기록',[previousRules]:'기존 충정로 도보 코스',[legacyRules]:'이전 코스'};
+export const courses = COURSES;
 export const expiryMs = 10000;
-const lines = {5:['마포','공덕','애오개','충정로','서대문'],2:['아현','충정로','시청','을지로입구']};
-const bounds = {street:[-10,10,-48,32],hall:[-9,9,1,19],platform:[-4.45,4.45,-25,25],
-  vehicle:[-1.9,1.9,-11,11],office:[-9,9,-28,34]};
+const lines = TRAIN_LINES;
+const bounds = {street:[-10,10,-48,32],hall:[-9,9,1,19],'exit-hall':[-6.72,6.72,1,19],platform:[-4.45,4.45,-25,25],
+  vehicle:[-1.9,1.9,-11,11],office:[-9,9,-28,34],'exit-street':[-9,9,-28,34]};
 const near = (s,x,z,r=2.35) => Math.hypot(s.x-x,s.z-z)<r+.015;
 const close = (a,b) => Math.abs(a-b)<.012;
 const spawn = (s,x,z) => close(s.x,x)&&close(s.z,z);
@@ -17,24 +17,32 @@ const integer = (n,a,b) => Number.isInteger(n)&&range(n,a,b);
 const boolean = n => typeof n==='boolean';
 const trip = s => s.ride ? [s.ride.type,s.ride.index,s.ride.direction,s.ride.open,s.ride.bell] : null;
 const identity = s => JSON.stringify([s.stage,s.line,s.station,s.busIndex,trip(s)]);
-const still = (a,b) => identity(a)===identity(b)&&close(a.x,b.x)&&close(a.z,b.z)&&close(a.hp,b.hp)&&close(a.t,b.t)
-  &&a.ride?.seated===b.ride?.seated&&a.ride?.grip===b.ride?.grip;
-const sameTick = (a,b) => close(a.t,b.t)&&close(a.hp,b.hp);
+const still = (a,b) => identity(a)===identity(b)&&close(a.x,b.x)&&close(a.z,b.z)&&close(a.t,b.t)
+  &&close(a.penalty,b.penalty)&&a.ride?.seated===b.ride?.seated&&a.ride?.grip===b.ride?.grip;
+const sameTick = (a,b) => close(a.t,b.t)&&close(a.penalty,b.penalty);
 const sameStops = (a,b) => a.line===b.line&&a.station===b.station&&a.busIndex===b.busIndex;
-const endIndex = s => s.ride.type==='bus' ? 17 : lines[s.line].length-1;
-const rideDelay = s => s.ride.type==='bus' ? (s.ride.open?5:13) : (s.ride.open?6:53);
-const boardingWindow = (s, stageAt, open) => ((s.t-stageAt+(open===5?42:48)-5)%(open===5?42:48))<open+.07;
-const target = s => s.ride.type==='bus' ? s.ride.index===16 : lines[s.line][s.ride.index]==='시청';
+const endIndex = s => s.ride.type==='bus' ? BUS_STOPS.length-1 : lines[s.line].length-1;
+const rideDelay = (s, course) => s.ride.type==='bus'
+  ? (s.ride.open?course.busDoorSeconds:course.busTravelSeconds)
+  : (s.ride.open?course.trainDoorSeconds:course.trainTravelSeconds);
+const boardingWindow = (s, stageAt, open, course) => {
+  const cycle=course.transport==='bus'?course.busCycleSeconds:course.trainCycleSeconds;
+  return ((s.t-stageAt+cycle-5)%(cycle))<open+.07;
+};
+const target = (s, course) => s.ride.type==='bus' ? s.ride.index===course.destinationIndex
+  : s.line===course.line&&s.ride.index===course.destinationIndex;
 
-export function initialState() {
-  return {point:{t:0,x:-5,z:15,hp:100,stage:'street',line:'5',station:'공덕',busIndex:1,ride:null},
+export function initialState(courseId=COURSE.id) {
+  const course=COURSES[courseId]??COURSE;
+  return {point:{t:0,x:CHECKPOINTS.entrance.start.x,z:CHECKPOINTS.entrance.start.z,penalty:0,
+    stage:'street',line:course.line,station:course.origin,busIndex:course.startBusIndex??1,ride:null},
     stageAt:0, vehicleAt:0, wall:0, paused:false, pauseWall:0};
 }
 
 function snapshot(s) {
   if (!s || typeof s!=='object' || !Object.hasOwn(bounds,s.stage) || !Object.hasOwn(lines,s.line)
-      || !lines[s.line].includes(s.station) || !integer(s.busIndex,0,17)
-      || !range(s.t,0,7200) || !range(s.hp,0,100)) return false;
+      || !lines[s.line].includes(s.station) || !integer(s.busIndex,0,BUS_STOPS.length-1)
+      || !range(s.t,0,7200) || !range(s.penalty??0,0,7200)) return false;
   const [x0,x1,z0,z1]=bounds[s.stage];
   if (!range(s.x,x0-.01,x1+.01)||!range(s.z,z0-.01,z1+.01)) return false;
   if (s.stage!=='vehicle') return s.ride===null;
@@ -45,57 +53,77 @@ function snapshot(s) {
 
 function sample(a,b) {
   const dt=b.t-a.t;
+  const penaltyDelta=(b.penalty??0)-(a.penalty??0);
   return identity(a)===identity(b)&&dt>=-.001
-    &&Math.hypot(a.x-b.x,a.z-b.z)<=5.4*Math.max(0,dt)+.085
-    &&b.hp<=a.hp+.001&&(a.hp>0||b.hp===0);
+    &&penaltyDelta>=0&&penaltyDelta<=60&&penaltyDelta%5===0
+    &&Math.hypot(a.x-b.x,a.z-b.z)<=5.4*Math.max(0,dt)+.085;
 }
 
-function board(a,b,stageAt,type,direction,index) {
-  return b.stage==='vehicle'&&sameStops(a,b)&&spawn(b,0,4)&&b.ride.type===type
+function board(a,b,stageAt,type,direction,index,course) {
+  const position=type==='train'?CHECKPOINTS.trainBoard.vehicle:CHECKPOINTS.busStop.vehicle;
+  return b.stage==='vehicle'&&sameStops(a,b)&&spawn(b,position.x,position.z)&&b.ride.type===type
     &&b.ride.index===index&&b.ride.direction===direction&&!b.ride.open&&!b.ride.bell
-    &&boardingWindow(a,stageAt,type==='bus'?5:6);
+    &&boardingWindow(a,stageAt,type==='bus'?course.busDoorSeconds:course.trainDoorSeconds,course);
 }
 
-function transition(a,b,stageAt,transport,version) {
-  if (a.hp<=0||!sameTick(a,b)) return false;
+function transition(a,b,stageAt,course,version) {
+  if (!sameTick(a,b)) return false;
   switch (a.stage) {
     case 'street':
-      if (transport==='train') {
-        return b.stage==='hall'&&a.busIndex===1&&sameStops(a,b)&&(version===legacyRules?near(a,-5,-24):a.z<=-32.09&&near(a,-5,-32.1,1.7))
-          &&spawn(b,0,14);
+      if (course.transport==='train') {
+        const entry=CHECKPOINTS.entrance.street, hall=CHECKPOINTS.entrance.hall;
+        return b.stage==='hall'&&a.busIndex===1&&sameStops(a,b)&&(version===legacyRules?near(a,-5,-24):a.z<=entry.z+.01&&near(a,entry.x,entry.z,entry.radius))
+          &&spawn(b,hall.x,hall.z);
       }
-      return near(a,7,-42)&&board(a,b,stageAt,'bus',a.busIndex===17?-1:1,a.busIndex);
+      return course.transport==='bus'&&near(a,CHECKPOINTS.busStop.street.x,CHECKPOINTS.busStop.street.z,CHECKPOINTS.busStop.street.radius)
+        &&board(a,b,stageAt,'bus',a.busIndex===BUS_STOPS.length-1?-1:1,a.busIndex,course);
     case 'hall':
-      return b.stage==='platform'&&sameStops(a,b)&&(version===legacyRules?near(a,0,1.6):Math.abs(a.x)<=.47&&a.z<=2.06)&&spawn(b,0,8);
+      return b.stage==='platform'&&sameStops(a,b)&&(version===legacyRules?near(a,0,1.6):
+        Math.abs(a.x)<=CHECKPOINTS.gate.hall.maxX&&a.z<=CHECKPOINTS.gate.hall.maxZ)
+        &&spawn(b,CHECKPOINTS.gate.platform.x,CHECKPOINTS.gate.platform.z);
     case 'platform': {
       const index=lines[a.line].indexOf(a.station), direction=a.x<0?-1:1;
       if (b.stage==='vehicle') {
-        return index+direction>=0&&index+direction<lines[a.line].length&&near(a,direction*4.45,0,.85)
-          &&board(a,b,stageAt,'train',direction,index);
+        const boarding=CHECKPOINTS.trainBoard.platform;
+        return a.line===course.line&&index<course.destinationIndex&&direction===course.direction
+          &&index+direction<lines[a.line].length&&near(a,direction*boarding.x,boarding.z,boarding.radius)
+          &&board(a,b,stageAt,'train',direction,index,course);
       }
-      if (!near(a,0,24)) return false;
+      const stationExit=CHECKPOINTS.stationExit;
+      if (!near(a,stationExit.platform.x,stationExit.platform.z)) return false;
+      if (a.station===course.destination) return b.stage==='exit-hall'&&sameStops(a,b)
+        &&spawn(b,stationExit.hall.x,stationExit.hall.z);
       if (a.station==='충정로') return b.stage==='hall'&&b.line!==a.line&&b.station===a.station
         &&b.busIndex===a.busIndex&&spawn(b,0,14);
       return a.station==='공덕'&&b.stage==='street'&&sameStops(a,b)&&spawn(b,-5,-20);
     }
+    case 'exit-hall':
+      return a.station===course.destination&&b.stage==='exit-street'&&sameStops(a,b)
+        &&near(a,0,CHECKPOINTS.gate.triggerZ,.9)&&spawn(b,CHECKPOINTS.stationExit.street.x,CHECKPOINTS.stationExit.street.z);
     case 'vehicle': {
       const r=a.ride, bus=r.type==='bus';
-      if (!r.open||!near(a,0,bus?-10.9:-11,bus?2.35:.85)||(bus&&!r.bell&&r.index!==17)) return false;
-      if (target(a)) return b.stage==='office'&&sameStops(a,b)&&spawn(b,0,34);
-      if (bus) return b.stage==='street'&&a.line===b.line&&a.station===b.station&&b.busIndex===r.index&&spawn(b,7,-38);
+      const trainExit=CHECKPOINTS.trainAlight.vehicle;
+      const busExit=CHECKPOINTS.busOfficeStart.office;
+      if (!r.open||!near(a,0,bus?-10.9:trainExit.z,bus?2.35:trainExit.radius)||(bus&&!r.bell&&r.index!==course.destinationIndex)) return false;
+      if (target(a,course)&&r.type==='bus') return b.stage==='office'&&a.line===b.line&&a.station===b.station
+        &&b.busIndex===r.index&&spawn(b,busExit.x,busExit.z);
+      if (bus) return false;
       return b.stage==='platform'&&b.line===a.line&&b.station===lines[a.line][r.index]&&b.busIndex===a.busIndex&&spawn(b,0,8);
     }
     default: return false;
   }
 }
 
-function vehicleChange(a,b,vehicleAt) {
+function vehicleChange(a,b,vehicleAt,course) {
   if (a.stage!=='vehicle'||b.stage!=='vehicle'||!sameStops(a,b)||!spawn(b,a.x,a.z)||!sameTick(a,b)
-      ||a.ride.type!==b.ride.type||a.ride.open===b.ride.open||a.t-vehicleAt<rideDelay(a)-.06) return false;
+      ||a.ride.type!==b.ride.type||a.ride.open===b.ride.open||a.t-vehicleAt<rideDelay(a,course)-.06) return false;
   const r=a.ride, n=b.ride;
-  if (r.open) return n.direction===r.direction&&n.index===r.index&&n.bell===(r.type==='bus'&&r.index===17);
+  if (r.open) return n.direction===r.direction&&n.index===r.index&&n.bell===r.bell
+    &&!(r.type==='bus'&&r.index===course.destinationIndex);
   const direction=r.index+r.direction<0||r.index+r.direction>endIndex(a) ? -r.direction : r.direction;
-  return n.direction===direction&&n.index===r.index+direction&&n.bell===r.bell;
+  const nextIndex=r.index+direction;
+  return n.direction===direction&&n.index===nextIndex
+    &&n.bell===(r.type==='bus'&&nextIndex===course.destinationIndex);
 }
 
 function bellChange(a,b) {
@@ -104,14 +132,15 @@ function bellChange(a,b) {
   return identity({...a,ride:{...a.ride,bell:true}})===identity(b);
 }
 
-function cleanPoint({t,x,z,hp,stage,line,station,busIndex,ride}) {
+function cleanPoint({t,x,z,penalty=0,stage,line,station,busIndex,ride}) {
   const cleanRide=ride&&{type:ride.type,index:ride.index,direction:ride.direction,open:ride.open,bell:ride.bell,
     grip:ride.grip,seated:ride.seated};
-  return {t,x,z,hp,stage,line,station,busIndex,ride:cleanRide};
+  return {t,x,z,penalty,stage,line,station,busIndex,ride:cleanRide};
 }
 
 // Sample positions and action boundaries are client reports. Server receipt bounds their clock.
 export function validateBatch(play, body, receiptMs) {
+  const course=COURSES[play.course];
   const state=structuredClone(play.state), events=body.events, wall=body.wall;
   const elapsed=receiptMs-Number(play.start_ms);
   const lastSeen=Number(play.seen_ms);
@@ -148,11 +177,11 @@ export function validateBatch(play, body, receiptMs) {
       if (!snapshot(before)||!sample(state.point,before)) return {reason:'movement'};
       entry.before=cleanPoint(before);
       if (event.kind==='stage') {
-        if (!transition(before,after,state.stageAt,courses[play.course].transport,play.rules)) return {reason:'stage_transition'};
+        if (!transition(before,after,state.stageAt,course,play.rules)) return {reason:'stage_transition'};
         state.stageAt=after.t;
         if (after.ride) state.vehicleAt=after.t;
       } else if (event.kind==='vehicle') {
-        if (!vehicleChange(before,after,state.vehicleAt)) return {reason:'vehicle_timing'};
+        if (!vehicleChange(before,after,state.vehicleAt,course)) return {reason:'vehicle_timing'};
         state.vehicleAt=after.t;
       } else if (event.kind==='bell') {
         if (!bellChange(before,after)) return {reason:'bus_bell'};

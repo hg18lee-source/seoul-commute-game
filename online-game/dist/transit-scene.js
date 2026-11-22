@@ -1,10 +1,11 @@
 import * as T from './vendor/three.module.js';
 import { GLTFLoader } from './hero/vendor/loaders/GLTFLoader.js';
+import { CHECKPOINTS } from './journey.js';
 
 const loader = new GLTFLoader();
 const entranceTemplates=new WeakMap();
 export const entrance = { x: -5, z: -25.5, scale: .86 };
-export const entranceLanding = -32.1;
+export const entranceLanding = CHECKPOINTS.entrance.landingZ;
 export const gateZ = 3.35;
 const treads = [
   [3.846, .087], [3.599, .229], [3.362, .390], [1.926, .312],

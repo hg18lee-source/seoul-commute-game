@@ -14,7 +14,7 @@ if (!uri||!new URL(uri).pathname.startsWith('/commute_test_')) {
 }
 const pool=makePool(uri), pepper=process.env.PASSWORD_PEPPER??randomBytes(32).toString('hex');
 const origin='https://commute.example.test';
-const routes={rail:'gongdeok-cityhall-rail',bus:'gongdeok-cityhall-bus'};
+const routes={rail:'gongdeok-chungjeongno-office-walk'};
 const testPin='0123';
 const adminPassword='browser-fixture-only-admin-91831';
 let now, fetchCount=0, breakUpstream=false;
@@ -164,7 +164,8 @@ test('wrong owner, wrong session, teleports, paused movement, timeouts, and canc
   assert.equal((await alpha('records')).body.rows.length,0);
 });
 
-test('validated rail and bus journeys, tied course ranks, retry, and durable own history',async()=>{
+test('validated fixed completion journey, tied ranks, retry, and durable own history',async()=>{
+  await journey(alpha,setClock,beginning(),routes.rail,{collisions:true,cancelAfterCollisions:true});
   const first=await journey(alpha,setClock,beginning(),routes.rail,{pause:true});
   assert.equal(first.result.body.best,null);
   const duplicate=await alpha('play-finish',{id:first.id,seq:first.seq,wall:first.wall,events:[]});
@@ -172,13 +173,9 @@ test('validated rail and bus journeys, tied course ranks, retry, and durable own
   await journey(beta,setClock,beginning(),routes.rail);
   const second=await journey(alpha,setClock,beginning(),routes.rail,{secondRecord:true});
   assert.equal(second.result.body.best,first.result.body.tenths);
-  await journey(beta,setClock,beginning(),routes.bus);
   const rail=(await alpha('ranking?course='+routes.rail)).body.rows;
   assert.deepEqual(rail.map(row=>row.rank),[1,1]);
   assert.equal(rail.filter(row=>row.mine).length,1);
-  const bus=(await alpha('ranking?course='+routes.bus)).body.rows;
-  assert.equal(bus.length,1);
-  assert.equal(bus[0].nickname.toLowerCase(),'office');
   const anotherBrowser=browser();
   await anotherBrowser('login',{nickname:'첫출근',password:testPin});
   const own=(await anotherBrowser('records?user='+((await beta('session')).body.user.id))).body.rows;

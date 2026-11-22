@@ -3,26 +3,11 @@ import { loadCommuter, movementSpeed } from './hero/motion.js';
 import { World } from './world.js';
 import { api, createPlay, currentAccount, element, setAccount } from './online.js';
 import { accountInterface } from './account-ui.js';
+import { BUS_COURSE, BUS_STOPS, CHECKPOINTS, COURSE, COURSES, TRAIN_LINES } from './journey.js';
 
 const $ = id => document.getElementById(id);
 const keys = new Set();
-const trainLines = {
-  '5': ['마포', '공덕', '애오개', '충정로', '서대문'],
-  '2': ['아현', '충정로', '시청', '을지로입구'],
-};
-const busStops = [
-  '동도중학교.서울디자인고등학교', '공덕역1번출구', '마포역', '청암동강변삼성아파트',
-  '원효2동산호아파트', '원효로풍전아파트', '원효로3가', '원효로2가사거리',
-  '남정초등학교', '용산e편한세상', '용산꿈나무종합타운.원효로우체국', '용산경찰서',
-  '남영역.민주화운동기념관', '숙대입구.서울시교육청역', '동자동',
-  '서울역버스환승센터.강우규의거터', '북창동.소공동주민센터건너', '청계광장.광화문역5번출구',
-];
-const routes = [
-  {name:'지하철 · 5 → 2호선', detail:'공덕 → 충정로 환승 → 시청', minutes:39},
-  {name:'직행 · 7016번', detail:'공덕역1번출구 → 북창동·소공동주민센터건너', minutes:43},
-];
-const events = [45, 115, 195];
-
+const trainLines = TRAIN_LINES;
 const pad = n => String(n).padStart(2, '0');
 const clock = seconds => {
   const mins = 480 + Math.floor(seconds / 10);
@@ -60,21 +45,23 @@ function chime() {
   tone.stop(audio.currentTime + .23);
 }
 let connection, starting=false;
-const selectedCourses=['gongdeok-cityhall-rail','gongdeok-cityhall-bus'];
+const selectedCourses=Object.keys(COURSES);
 const ui=accountInterface({openDialog,closeDialog,button,menu,start,timeText});
 
 function snapshot() {
   const {x,z}=world.hero.position;
-  const {time:t,hp,stage,line,station,busIndex,ride:current}=run;
+  const {time:t,stage,line,station,busIndex,ride:current}=run;
   const ride=current?{type:current.type,index:current.index,direction:current.direction,open:current.open,bell:current.bell,
     grip:run.grip,seated:run.seated}:null;
-  return {t,x,z,hp,stage,line,station,busIndex,ride};
+  return {t,x,z,stage,line,station,busIndex,penalty:run.penaltySeconds,ride};
 }
 function capture(kind,before) { connection?.event(kind,before); }
 function stage(mode,data={},before) {
   run.stage=mode;
   run.stageAt=run.time;
-  world.setStage(mode,data);
+  world.busOnly=Boolean(run&&COURSES[run.course].transport==='bus');
+  if(world.busOnly)world.transit={};
+  world.setStage(mode,{...data,busOnly:run&&COURSES[run.course].transport==='bus'});
   if (before) capture('stage',before);
 }
 function menu() {
@@ -85,6 +72,7 @@ function menu() {
   keys.clear();
   $('dialog').hidden=$('hud').hidden=$('mobile-controls').hidden=true;
   document.body.classList.remove('playing');
+  if(world)world.busOnly=false;
   world?.setStage('street',{intro:true});
   ui.renderMenu();
 }
@@ -99,7 +87,7 @@ async function start(course) {
   for (const item of oldButtons) item.disabled=true;
   let issued;
   try {
-    if(!world.transit.entrance||!world.transit.gate){
+    if(COURSES[course].transport==='train'&&(!world.transit.entrance||!world.transit.gate)){
       const {loaded,failures}=await loadTransit(count=>{
         status.textContent='역 입구·개찰구 불러오는 중 ('+count+'/2)';
       });
@@ -121,15 +109,16 @@ async function start(course) {
     audio ||= new AudioContext();
     audio.resume().catch(()=>{});
   } catch {}
-  run={time:0,hp:100,route:selectedCourses.indexOf(course),course,stage:'street',stageAt:0,line:'5',station:'공덕',
-    ride:null,disruption:null,eventIndex:0,hitAt:-2,grip:false,seated:false,motion:false,busIndex:1,done:false};
+  const route=COURSES[course];
+  run={time:0,route:course,course,stage:'street',stageAt:0,line:route.line,station:route.origin,
+    ride:null,hitAt:-2,penaltySeconds:0,grip:false,seated:false,motion:false,busIndex:route.startBusIndex??1,done:false};
   phone=paused=false;
   closeDialog();
   keys.clear();
   $('screen').replaceChildren();
   $('hud').hidden=$('mobile-controls').hidden=false;
   document.body.classList.add('playing');
-  stage('street',{spawnX:-5,spawnZ:15});
+  stage('street',{spawnX:CHECKPOINTS.entrance.start.x,spawnZ:CHECKPOINTS.entrance.start.z});
   priorFrame=performance.now();
   connection=createPlay(issued.id,snapshot,playAborted);
   connection.sync();
@@ -172,28 +161,30 @@ function pause() {
 }
 function locationName() {
   if (run.ride) return stopName(run.ride);
-  if (run.stage === 'office') return '시청역 인근 회사';
-  if (run.stage === 'street' && run.busIndex !== 1) return busStops[run.busIndex];
+  if (run.stage === 'office') return '충정로역 인근 회사';
+  if (run.stage==='exit-street') return '충정로역 밖 거리';
+  if (run.stage === 'street' && COURSES[run.course].transport==='bus') return BUS_STOPS[run.busIndex];
+  if (run.stage === 'street' && run.busIndex !== 1) return BUS_STOPS[run.busIndex];
   return run.stage === 'street' ? '공덕동' : run.station + '역';
 }
 function options() {
-  if (run.stage === 'office') return [{id:run.route,name:'도보',detail:'현재 위치 → 회사 입구',minutes:Math.ceil(Math.abs(world.hero.position.z+26)/18)}];
-  if (run.ride?.type === 'bus' || (run.stage === 'street' && run.busIndex !== 1))
-    return [{...routes[1],id:1,detail:locationName()+' → 북창동·소공동주민센터건너',minutes:Math.max(6,(16-(run.ride?.index ?? run.busIndex))*2)}];
-  if (run.stage !== 'street') {
-    const target = run.line === '5' ? '충정로 환승 → 시청' : '시청';
-    return [{...routes[0],id:0,detail:locationName()+' → '+target,minutes:run.line==='5'?24:11}];
-  }
-  const route=routes[run.route];
-  return [{...route,id:run.route,minutes:Math.max(1,route.minutes-Math.floor(run.time/23))}];
+  const course=COURSES[run.course], bus=course.transport==='bus';
+  const stopCount=course.destinationIndex-(bus?(run.ride?.index??run.busIndex):trainLines[run.line].indexOf(run.station));
+  const remaining=(run.stage==='office'||run.stage==='exit-street')?Math.ceil(Math.abs(world.hero.position.z-(course.finishPoint?.z??-26))/18)
+    :run.ride?Math.max(1,Math.ceil(run.ride.nextAt-run.time)+Math.max(0,stopCount)*(bus?course.busTravelSeconds+course.busDoorSeconds:course.trainTravelSeconds+course.trainDoorSeconds)+12)
+    :bus?Math.max(1,Math.ceil(doorTiming(course.busDoorSeconds).remaining)+Math.max(0,stopCount)*(course.busTravelSeconds+course.busDoorSeconds)+28)
+      :Math.max(1,Math.ceil((course.destinationIndex-trainLines[run.line].indexOf(run.station))*(course.trainTravelSeconds+course.trainDoorSeconds)+28));
+  return [{id:course.id,name:course.label,detail:(run.stage==='office'||run.stage==='exit-street')?'현재 위치 → 회사 입구':course.detail,
+    minutes:Math.max(1,Math.ceil(remaining/10))}];
 }
 function drawPhone() {
   const list = options();
   selected = Math.min(selected,list.length-1);
-  openDialog('<div class="phone-notch"></div><div class="phone-top"><strong>출근 길찾기</strong><button class="close" id="phone-close" aria-label="닫기">×</button></div><div class="phone-content"><p class="phone-locations">'+locationName()+' → 시청 회사</p><div id="phone-routes"></div><button class="btn" id="confirm-route">안내 시작 · Enter</button><p class="phone-note">↑↓ 경로 선택 · M 닫기<br>길찾기 중에도 시간은 흐릅니다.</p></div>', 'phone');
+  const destination=COURSES[run.course].destinationLabel||'충정로';
+  openDialog('<div class="phone-notch"></div><div class="phone-top"><strong>출근 길찾기</strong><button class="close" id="phone-close" aria-label="닫기">×</button></div><div class="phone-content"><p class="phone-locations">'+locationName()+' → '+destination+' 회사</p><div id="phone-routes"></div><button class="btn" id="confirm-route">안내 시작 · Enter</button><p class="phone-note">↑↓ 경로 선택 · M 닫기<br>길찾기 중에도 시간은 흐릅니다.</p></div>', 'phone');
   for (const [index, route] of list.entries()) {
     const card = button('', () => { selected=index; drawPhone(); }, 'route-card'+(index===selected?' active':''));
-    card.innerHTML = '<strong>'+route.name+'</strong><div>'+route.detail+'</div><small>환승 '+(route.id===0&&run.line==='5'&&run.stage!=='office'?'1':'0')+'회 · 도보 포함 · 약 '+route.minutes+'분 · '+clock(run.time+route.minutes*10)+' 도착</small>';
+    card.innerHTML = '<strong>'+route.name+'</strong><div>'+route.detail+'</div><small>환승 0회 · 도보 포함 · 약 '+route.minutes+'분 · '+clock(run.time+route.minutes*10)+' 도착</small>';
     card.setAttribute('aria-pressed', String(index===selected));
     $('phone-routes').append(card);
   }
@@ -211,31 +202,26 @@ function confirmRoute() {
   run.route=options()[selected]?.id ?? run.route;
   togglePhone();
 }
-function damage(points, reason) {
-  run.hp = Math.max(0,run.hp-points);
-  $('damage').classList.remove('flash');
-  void $('damage').offsetWidth;
-  $('damage').classList.add('flash');
-  notice(reason+' −'+points);
-}
 function platform(before) {
   const line = trainLines[run.line], index = line.indexOf(run.station);
-  stage('platform',{station:run.station,line:run.line,neighbors:[line[index-1]??'회차',line[index+1]??'회차'],spawnZ:8},before);
+  stage('platform',{station:run.station,line:run.line,neighbors:[line[index-1]??'회차',line[index+1]??'회차'],spawnZ:CHECKPOINTS.trainAlight.platform.z},before);
 }
 function doorTiming(openSeconds) {
-  const cycle = openSeconds === 5 ? 42 : 48;
+  const course=COURSES[run.course];
+  const cycle = openSeconds === 5 ? BUS_COURSE.busCycleSeconds : course.trainCycleSeconds;
   const remaining = (run.time-run.stageAt+cycle-5)%cycle;
   return {open:remaining<openSeconds,remaining:remaining<openSeconds?openSeconds-remaining:cycle-remaining};
 }
 function ride(type, direction) {
   const before=snapshot();
+  const course=COURSES[run.course];
   const index = type === 'bus' ? run.busIndex : trainLines[run.line].indexOf(run.station);
-  run.ride = {type,index,direction,line:run.line,open:false,nextAt:run.time+(type==='bus'?13:53),bell:false,warned:false};
+  run.ride = {type,index,direction,line:run.line,open:false,nextAt:run.time+(type==='bus'?course.busTravelSeconds:course.trainTravelSeconds),bell:false,warned:false};
   run.grip = run.seated = false;
-  stage('vehicle',{type,line:run.line,next:nextName(run.ride),spawnZ:4},before);
-  notice(type==='bus'?'교통카드 확인 · 7016 탑승':'열차 탑승');
+  stage('vehicle',{type,line:run.line,next:nextName(run.ride),spawnZ:CHECKPOINTS.trainBoard.vehicle.z},before);
+  notice(type==='bus'?'교통카드 확인 · '+course.busNumber+'번 버스 탑승':'열차 탑승');
 }
-function stopsFor(r) { return r.type==='bus'?busStops:trainLines[r.line]; }
+function stopsFor(r) { return r.type==='bus'?BUS_STOPS:trainLines[r.line]; }
 function nextName(r) { return stopsFor(r)[r.index+r.direction] ?? '회차'; }
 function stopName(r) { return stopsFor(r)[r.index]; }
 function rideStep() {
@@ -249,33 +235,46 @@ function rideStep() {
   if (run.time<r.nextAt) return;
   const before=snapshot();
   if (r.open) {
+    const course=COURSES[run.course];
+    if(r.type==='train'&&r.line===course.line&&r.index===course.destinationIndex){
+      finish(false,'충정로역에서 하차하지 못했습니다. 다음 열차로 다시 도전하세요.');
+      return;
+    }
+    if(r.type==='bus'&&r.index===course.destinationIndex){
+      finish(false,course.destinationLabel+' 정류장을 지나쳤습니다. 다시 도전하세요.');
+      return;
+    }
     r.open=false;
     r.warned=false;
-    r.bell=r.type==='bus'&&r.index===busStops.length-1;
-    r.nextAt=run.time+(r.type==='bus'?13:53);
+    r.bell=r.type==='bus'&&r.index===COURSES[run.course].destinationIndex;
+    r.nextAt=run.time+(r.type==='bus'?COURSES[run.course].busTravelSeconds:COURSES[run.course].trainTravelSeconds);
   } else {
     const stops=stopsFor(r);
     if (!stops[r.index+r.direction]) r.direction*=-1;
     r.index+=r.direction;
     r.open=true;
-    r.nextAt=run.time+(r.type==='bus'?5:6);
+    r.nextAt=run.time+(r.type==='bus'?COURSES[run.course].busDoorSeconds:COURSES[run.course].trainDoorSeconds);
     chime();
     notice('정차 · '+stopName(r));
     if (phone && !paused) drawPhone();
   }
   capture('vehicle',before);
 }
-function canExit(r) { return r.open && (r.type==='train'||r.bell||r.index===busStops.length-1); }
+function canExit(r) { return r.open && (r.type==='train'||r.bell||r.index===BUS_STOPS.length-1); }
 function alight() {
   const before=snapshot(),r=run.ride;
   run.ride=null;
   run.grip=run.seated=false;
-  if ((r.type==='bus'&&r.index===16)||(r.type==='train'&&stopName(r)==='시청')) {
-    stage('office',{station:'시청',spawnZ:34},before);
-  } else if (r.type==='bus') {
+  if (r.type==='bus') {
     run.busIndex=r.index;
-    stage('street',{spawnX:7,spawnZ:-38},before);
-    notice('정류장에서 7016번에 다시 탈 수 있습니다.');
+    if(COURSES[run.course].transport==='bus'&&r.index===COURSES[run.course].destinationIndex) {
+      stage('office',{spawnX:CHECKPOINTS.busOfficeStart.office.x,spawnZ:CHECKPOINTS.busOfficeStart.office.z},before);
+      notice(COURSES[run.course].destinationLabel+' 정류장에 도착했습니다. 앞쪽 회사까지 걸어가세요.');
+    } else {
+      stage('street',{spawnX:CHECKPOINTS.busStop.street.x,spawnZ:CHECKPOINTS.busStop.street.z-4},before);
+      notice('잘못된 정류장에서 내렸습니다. '+COURSES[run.course].destinationLabel+'에서 내려야 합니다.');
+      finish(false,'잘못된 정류장에서 내렸습니다. '+COURSES[run.course].destinationLabel+'에서 내려야 합니다.');
+    }
   } else {
     run.station=stopName(r);
     platform(before);
@@ -288,17 +287,24 @@ function action() {
     if (run.seated) { run.seated=false; return; }
     if (run.grip) { notice('Space로 손잡이를 놓으세요.'); return; }
     if (r.type==='bus'&&spot?.id==='bell') { const before=snapshot(); r.bell=true; capture('bell',before); notice('하차 벨을 눌렀습니다.'); }
-    else if (r.type==='bus'&&spot?.id==='alight'&&canExit(r)) alight();
-    else if (spot?.seat) run.seated=true;
+    else if (r.type==='bus'&&spot?.id==='alight'&&canExit(r)) {
+      if(r.index!==COURSES[run.course].destinationIndex)finish(false,'잘못된 정류장에서 내렸습니다. '+COURSES[run.course].destinationLabel+'에서 내려야 합니다.');
+      else alight();
+    }
+    else if (spot?.seat) {world.sitAt(spot);run.seated=true;}
     return;
   }
   const before=snapshot();
-  if (run.stage==='street'&&spot?.id==='bus'&&run.route===1) {
-    if (doorTiming(5).open) ride('bus',run.busIndex===busStops.length-1?-1:1);
-    else notice('앞문이 열리면 E로 탑승하세요.');
-  } else if (run.stage==='hall'&&spot?.id==='gate') world.openGate(run.time);
+  if (run.stage==='street'&&COURSES[run.course].transport==='bus'&&spot?.id==='bus') {
+    const door=doorTiming(COURSES[run.course].busDoorSeconds);
+    if(door.open)ride('bus',run.busIndex===BUS_STOPS.length-1?-1:1);
+    else notice(COURSES[run.course].busNumber+'번 버스가 정류장에 도착할 때까지 '+Math.ceil(door.remaining)+'초 기다리세요.');
+  }
+  else if ((run.stage==='hall'||run.stage==='exit-hall')&&spot?.id==='gate') world.openGate(run.time);
   else if (run.stage==='platform'&&spot?.id==='exit') {
-    if (run.station==='충정로') {
+    if (run.station===COURSE.destination) {
+      notice('밝은 표시를 따라 계속 걸어가 개찰구로 나가세요.');
+    } else if (run.station==='충정로') {
       run.line=run.line==='5'?'2':'5';
       stage('hall',{station:run.station,line:run.line},before);
       notice(run.line+'호선 환승 통로');
@@ -309,25 +315,11 @@ function action() {
 function grip() {
   if (!run?.ride||run.done||paused||phone||run.seated) return;
   const z=world.hero.position.z;
-  if (run.grip || near(.7,Math.round(z/2.5)*2.5,1.8)) run.grip=!run.grip;
+  if (run.grip) run.grip=false;
+  else if (near(.7,Math.round(z/2.5)*2.5,1.8)) {world.alignGrip(Math.round(z/2.5)*2.5);run.grip=true;}
   else notice('통로 손잡이 가까이에서 Space를 누르세요.');
 }
-function eventStep(running) {
-  if (run.eventIndex<events.length && run.time>=events[run.eventIndex]) {
-    run.eventIndex++;
-    run.disruption={ride:run.ride,until:run.time+4};
-    chime();
-  }
-  const event=run.disruption;
-  if (!event || run.time<event.until) return;
-  run.disruption=null;
-  if (event.ride && run.ride===event.ride) {
-    if (!run.grip&&!run.seated) damage(event.ride.type==='bus'?8:5,event.ride.type==='bus'?'버스 급정거':'열차 흔들림');
-    else notice('손잡이·좌석으로 피해를 피했습니다.');
-  } else if (!event.ride && !run.ride && running) damage(6,'젖은 바닥에서 미끄러짐');
-  else notice('해프닝을 안전하게 통과했습니다.');
-}
-async function finish(success) {
+async function finish(success,failureMessage='출근 경로를 완료하지 못했습니다.') {
   run.done=true;
   phone=false;
   keys.clear();
@@ -346,22 +338,21 @@ async function finish(success) {
   openDialog(success
     ? '<section class="result"><h2>도착</h2><div class="time-label">이번 기록</div><div class="time-main">'+timeText(result.tenths/10)+'</div>'+
       (result.best===null?'':'<div class="time-label">최고 기록</div><div class="time-best">'+timeText(result.best/10)+'</div>')+'</section><div id="dialog-actions" class="button-row"></div>'
-    : '<h2>출근 실패</h2><p>체력이 모두 소진되었습니다.</p><div id="dialog-actions" class="button-row"></div>');
+    : '<h2>출근 실패</h2><p>'+failureMessage+'</p><div id="dialog-actions" class="button-row"></div>');
   $('dialog-actions').append(button('재도전',()=>start(course)),button('메인 화면',menu));
 }
 function refresh() {
-  $('hp').textContent=Math.ceil(run.hp);
-  $('hpbar').style.width=run.hp+'%';
-  $('elapsed').textContent=timeText(run.time);
+  $('elapsed').textContent=timeText(run.time+run.penaltySeconds);
   $('clock').textContent=clock(run.time);
   $('location').textContent=locationName();
   const r=run.ride, spot=world.nearest();
   let guide='', hint='';
   if (r) {
-    guide=r.type==='bus'?'하차할 정류장 전에 벨을 누르세요':'시청 또는 충정로에서 열린 문으로 걸어 내리세요';
+    guide=r.type==='bus'?COURSES[run.course].destinationLabel+' 정류장에서 내리세요. 도착 전에 벨을 누르세요.':'시청 또는 충정로에서 열린 문으로 걸어 내리세요';
     const info=$('ride-info');
     info.hidden=false;
-    info.textContent=(r.type==='bus'?'7016번':r.line+'호선')+' · '+(r.open?'정차 '+stopName(r):'다음 '+nextName(r))+
+    world.setVehicleDestination((r.open?'정차 ':'다음 ')+ (r.open?stopName(r):nextName(r)));
+    info.textContent=(r.type==='bus'?COURSES[run.course].busNumber+'번 버스':r.line+'호선 · 현재 '+stopName(r)+'역')+' · '+(r.open?'정차 중':'다음 '+nextName(r))+
       (r.open?' · '+(canExit(r)?'하차 가능':'하차 벨을 누르세요')+' · '+Math.ceil(r.nextAt-run.time)+'초':'')+(r.bell?' · 하차 요청':'')+(run.grip?' · 손잡이 잡는 중':'')+(run.seated?' · 착석 중':'');
     if (run.seated) hint='E · 일어나기';
     else if (run.grip) hint='Space · 손잡이 놓기';
@@ -370,38 +361,43 @@ function refresh() {
   } else {
     $('ride-info').hidden=true;
     if (run.stage==='street') {
-      if (world.streetBus) world.streetBus.position.z=-42-Math.min(45,Math.max(0,doorTiming(5).remaining-1)*3);
-      guide=run.route===1||run.busIndex!==1?'7016 정류장 · 큰길 오른쪽 아래':'공덕역 입구 · 골목 왼쪽 앞';
-      if (spot?.id==='bus'&&run.route===1) {
-        const door=doorTiming(5);
-        hint=door.open?'E · 7016 앞문 승차 · '+Math.ceil(door.remaining)+'초':'다음 7016까지 '+Math.ceil(door.remaining)+'초';
+      const course=COURSES[run.course];
+      if (world.streetBus) world.streetBus.position.z=CHECKPOINTS.busStop.street.z-Math.min(45,Math.max(0,doorTiming(BUS_COURSE.busDoorSeconds).remaining-1)*3);
+      if(course.transport==='bus') {
+        guide=course.busNumber+'번 · '+BUS_STOPS[course.startBusIndex]+' 정류장 · 노란 탑승 표시';
+        if(spot?.id==='bus') {
+          const door=doorTiming(course.busDoorSeconds);
+          hint=door.open?'E · 정차한 '+course.busNumber+'번 버스 탑승':'정류장에서 대기 · 버스 도착까지 '+Math.ceil(door.remaining)+'초';
+        }
+      } else {
+        guide='공덕역 입구 · 골목 왼쪽 앞';
+        if (near(-5,-22,3.5)) hint='좌우 통로로 맞춘 뒤 ↑ · 계단 내려가기';
       }
-      if (run.busIndex===1&&run.route===0&&near(-5,-22,3.5)) hint='좌우 통로로 맞춘 뒤 ↑ · 계단 내려가기';
     }
-    if (run.stage==='hall') {
-      guide=world.gate.open?'열린 개찰구를 통과해 승강장으로 이동하세요':'앞쪽 개찰구에서 교통카드를 찍으세요';
+    if (run.stage==='hall'||run.stage==='exit-hall') {
+      guide=run.stage==='exit-hall'?(world.gate.open?'열린 개찰구를 지나 역 밖으로 나가세요':'앞쪽 개찰구에서 교통카드를 찍으세요'):(world.gate.open?'열린 개찰구를 통과해 승강장으로 이동하세요':'앞쪽 개찰구에서 교통카드를 찍으세요');
       if(spot?.id==='gate') hint=world.gate.open?'↑ · 개찰구 통과':
         world.gate.startedAt===null?'E · 교통카드 찍기':'개찰구 열리는 중';
     }
     if (run.stage==='platform') {
-      guide=run.station==='충정로'&&run.line==='5'?'환승하려면 뒤쪽 통로로 이동하세요':'오른쪽 승강장 · '+(run.line==='5'?'충정로 방향':'시청 방향');
-      const door=doorTiming(6);
+      const course=COURSES[run.course];
+      guide=run.station===course.destination?'현재 '+course.destination+'역 · 하차 표시를 따라 출구로 이동하세요':`현재 ${run.station}역 · 오른쪽 승강장에서 ${course.destination} 방향 열차를 타세요`;
+      const door=doorTiming(course.trainDoorSeconds);
       for (const train of world.platformTrains) train.position.z=door.open?0:-Math.min(85,door.remaining*8);
-      if (spot?.direction) hint=door.open?(spot.direction===1?'→':'←')+' · '+spot.label+' · 문 열린 상태 '+Math.ceil(door.remaining)+'초':'열차까지 '+Math.ceil(door.remaining)+'초';
-      if (spot?.id==='exit') hint=run.station==='충정로'?'E · 환승 통로':'E · 역 출구';
+      if (spot?.direction) hint=spot.boarding?(door.open?'→ 노란 원 안에서 앞으로 걸어가 탑승하세요':'노란 원이 탑승 지점 · 열차까지 '+Math.ceil(door.remaining)+'초'):(door.open?(spot.direction===1?'→':'←')+' · '+spot.label+' · 문 열린 상태 '+Math.ceil(door.remaining)+'초':'열차까지 '+Math.ceil(door.remaining)+'초');
+      if (spot?.alighting) hint=spot.id==='exit'&&run.station===COURSE.destination?'↑ · 표시를 따라 개찰구로 이동':'↑ · 계속 전진';
     }
-    if (run.stage==='office') guide='앞쪽 빨간 직장 포털까지 걸어가세요';
+    if (run.stage==='exit-street'||run.stage==='office') guide='거리를 따라 앞쪽 회사 입구까지 걸어가세요';
   }
   $('guide').textContent=guide;
   $('interaction').textContent=hint;
   $('interaction').hidden=!hint;
-  $('event').hidden=!run.disruption;
-  if (run.disruption) $('event').textContent=run.disruption.ride?'주의 · 차량이 흔들립니다. Space로 손잡이를 잡거나 좌석에 앉으세요.':'주의 · 젖은 바닥입니다. 걷거나 멈추세요.';
-  $('mode-label').textContent='대표 코스 · 공덕 → 시청';
+  $('mode-label').textContent=COURSES[run.course].label;
 }
 function step(dt) {
   run.time+=dt;
   rideStep();
+  if(run.done)return;
   world.gateTick(run.time);
   let dx=0,dz=0;
   if (!phone&&!run.grip&&!run.seated) {
@@ -410,25 +406,37 @@ function step(dt) {
   }
   const running=Boolean((dx||dz)&&keys.has('Shift'));
   run.motion=world.move(dx,dz,dt,running?movementSpeed.run:movementSpeed.walk);
-  if (running) run.hp=Math.max(0,run.hp-.2*dt);
-  if (run.motion) world.crowdCollision(running,dt,()=>{
-    if (run.time-run.hitAt>=2) { run.hitAt=run.time; damage(3,'보행자 충돌'); }
+  if (run.motion) world.crowdCollision(running,dt,isRunning=>{
+    if (run.time-run.hitAt>=2) {
+      run.hitAt=run.time;
+      const delay=isRunning?10:5;
+      run.penaltySeconds+=delay;
+      notice(`보행자와 충돌 · 기록 시간 +${delay}초`);
+    }
   });
   world.advanceHero(dt,{running,grip:run.grip,seated:run.seated});
-  eventStep(running);
-  if (run.hp<=0) { finish(false); return; }
-  if (run.stage==='office'&&near(0,-26,1.2)) { finish(true); return; }
-  if(run.stage==='street'&&run.route===0&&run.busIndex===1&&
+  const course=COURSES[run.course];
+  const finishPoint=course.finishPoint??CHECKPOINTS.officeFinish.office;
+  if ((run.stage===(course.transport==='bus'?'office':'exit-street'))&&near(finishPoint.x,finishPoint.z,finishPoint.radius)) { finish(true); return; }
+  if(course.transport==='train'&&run.stage==='street'&&run.busIndex===1&&
       world.hero.position.z<=entranceLanding&&near(-5,entranceLanding,1.7)) {
     const before=snapshot();
     stage('hall',{station:run.station,line:run.line},before);
-  } else if(run.stage==='hall'&&world.gate.open&&world.hero.position.z<=2.05) {
+  } else if(run.stage==='hall'&&world.gate.open&&world.hero.position.z<=CHECKPOINTS.gate.triggerZ) {
     platform(snapshot());
+  } else if(run.stage==='platform'&&run.station===course.destination&&dz<0&&near(CHECKPOINTS.stationExit.platform.x,CHECKPOINTS.stationExit.platform.z,1.25)) {
+    stage('exit-hall',{station:run.station,line:run.line,spawnX:CHECKPOINTS.stationExit.hall.x,spawnZ:CHECKPOINTS.stationExit.hall.z},snapshot());
+    notice('개찰구 앞입니다. E로 카드를 찍고 계속 전진하세요.');
+  } else if(run.stage==='exit-hall'&&world.gate.open&&world.hero.position.z<=CHECKPOINTS.gate.triggerZ) {
+    stage('exit-street',{station:run.station,spawnX:CHECKPOINTS.stationExit.street.x,spawnZ:CHECKPOINTS.stationExit.street.z},snapshot());
+    notice('역 밖으로 나왔습니다. 앞쪽 회사까지 이동하세요.');
   }
-  if (run.stage==='platform'&&dx&&near(Math.sign(dx)*4.45,0,.85)&&doorTiming(6).open) {
+  const board=CHECKPOINTS.trainBoard.platform, exit=CHECKPOINTS.trainAlight.vehicle;
+  if (course.transport==='train'&&run.stage==='platform'&&run.line===course.line&&run.station!==course.destination
+      &&dx===course.direction&&near(board.x,board.z,board.radius)&&doorTiming(course.trainDoorSeconds).open) {
     const index=trainLines[run.line].indexOf(run.station);
     if (trainLines[run.line][index+Math.sign(dx)]) ride('train',Math.sign(dx));
-  } else if (run.ride?.type==='train'&&dz<0&&near(0,-11,.85)&&canExit(run.ride)) alight();
+  } else if (run.ride?.type==='train'&&dz<0&&near(exit.x,exit.z,exit.radius)&&canExit(run.ride)) alight();
   if (phone&&lastPhoneMinute!==Math.floor(run.time/10)) { lastPhoneMinute=Math.floor(run.time/10); drawPhone(); }
   refresh();
 }

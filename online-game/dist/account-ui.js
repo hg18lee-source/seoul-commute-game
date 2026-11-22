@@ -1,5 +1,4 @@
-import { api, currentAccount, element, kst, setAccount } from './online.js';
-import { showTraffic } from './traffic-data.js';
+import { api, currentAccount, element, setAccount } from './online.js';
 
 export function accountInterface({openDialog,closeDialog,button,menu,start,timeText}) {
   const $=id=>document.getElementById(id);
@@ -45,26 +44,45 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
     };
   }
   async function chooseCourse() {
-    openDialog('<h2>공식 코스</h2><p id="course-status" role="status">코스를 불러오는 중…</p><div id="dialog-actions" class="button-row"></div>');
-    const status=$('course-status'), actions=$('dialog-actions');
-    actions.append(button('닫기',closeDialog));
+    openDialog('<section class="record-dialog"><header class="record-header"><small>SEOUL COMMUTE · COURSE SELECT</small><h2>출근 코스 선택</h2>'+ 
+      '<p>이용할 교통수단을 고르면 해당 경로로 출근을 시작합니다.</p></header><div class="record-content course-picker">'+
+      '<p id="course-status" class="record-status" role="status">코스를 불러오는 중…</p><div id="course-choices" class="course-choices"></div>'+ 
+      '<button id="course-close" class="btn record-close">닫기</button></div></section>', 'dialog-card records-modal course-modal');
+    const status=$('course-status'), choices=$('course-choices');
+    $('course-close').onclick=closeDialog;
     try {
       const {courses:list}=await catalog();
-      if (!actions.isConnected) return;
-      status.textContent='같은 코스의 기록끼리 순위를 매깁니다.';
-      actions.prepend(...Object.entries(list).map(([id,course])=>button(course.label,()=>start(id))));
-    } catch (error) {if (actions.isConnected) showError(error,status);}
+      if (!choices.isConnected) return;
+      status.textContent='지하철과 버스 기록은 서로 다른 코스로 저장됩니다.';
+      for(const [id,course] of Object.entries(list)){
+        const option=button('',()=>start(id),'course-choice');
+        option.append(element('span',course.transport==='bus'?'버스 '+course.busNumber+'번':'지하철 '+course.line+'호선'));
+        option.lastChild.className='course-kind';
+        option.append(element('strong',course.label));
+        option.append(element('small',course.detail));
+        option.append(element('b','선택 →'));
+        choices.append(option);
+      }
+    } catch (error) {if (choices.isConnected) showError(error,status);}
   }
   function listRecords(ranked) {
-    openDialog('<h2>'+(ranked?'랭킹':'내 기록')+'</h2><div id="record-filter"></div><p id="record-status" role="status"></p>'+
-      '<ol id="record-rows" class="online-records"></ol><div id="record-pages" class="button-row"></div>'+
-      '<div class="button-row"><button id="record-close" class="btn">닫기</button></div>');
+    openDialog('<section class="record-dialog"><header class="record-header"><small>SEOUL COMMUTE · '+(ranked?'RANKING':'MY RECORDS')+'</small><h2>'+(ranked?'랭킹':'내 기록')+'</h2>'+
+      '<p>'+(ranked?'선택한 교통수단 코스의 완주 기록':'내가 완주한 출근 기록')+'</p></header><div class="record-content">'+
+      '<div id="record-filter" class="record-filters"></div><p id="record-note" class="record-note"></p>'+
+      '<p id="record-status" class="record-status" role="status" aria-live="polite"></p>'+
+      '<div class="record-table-wrap"><table class="record-table"><thead id="record-head"></thead><tbody id="record-rows"></tbody></table></div>'+
+      '<div id="record-pages" class="record-pages"></div><button id="record-close" class="btn record-close">닫기</button></div></section>',
+      'dialog-card records-modal');
     const status=$('record-status'), rows=$('record-rows'), pages=$('record-pages');
     $('record-close').onclick=closeDialog;
     const filter=element('select');
     filter.setAttribute('aria-label','코스');
-    const versions=element('select');
-    versions.setAttribute('aria-label','규칙 버전');
+    $('record-head').innerHTML=ranked
+      ?'<tr><th scope="col">순위</th><th scope="col">플레이어</th><th scope="col" class="record-number">기록</th></tr>'
+      :'<tr><th scope="col">번호</th><th scope="col">코스</th><th scope="col" class="record-number">기록</th></tr>';
+    $('record-note').textContent=ranked
+      ?'내 기록은 색상과 굵은 글씨로 표시됩니다.'
+      :'최근 완주 기록부터 표시합니다. 완료 날짜와 시각은 순위표에서 제외했습니다.';
     let revision=0;
     async function load(page=1) {
       const requested=++revision;
@@ -72,32 +90,41 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
       pages.replaceChildren();
       try {
         const query=new URLSearchParams({page});
-        if (ranked) {
-          query.set('course',filter.value);
-          query.set('rules',versions.value);
-        }
+        if (ranked) query.set('course',filter.value);
         const result=await api((ranked?'ranking?':'records?')+query);
         if (requested!==revision||!rows.isConnected) return;
         rows.replaceChildren();
-        for (const row of result.rows) {
-          const text=ranked?row.rank+'위 · '+row.nickname+' · '+timeText(row.tenths/10):
-            (result.courses[row.course]?.label??row.course)+' · '+timeText(row.tenths/10)+' · '+(result.ruleVersions[row.rules]??row.rules)+' · '+kst.format(new Date(row.finished_at));
-          const line=element('li',text);
-          if (row.mine) line.classList.add('mine');
-          rows.append(line);
-        }
+        result.rows.forEach((row,index)=>{
+          const tr=element('tr');
+          if(row.mine)tr.classList.add('mine');
+          const rank=element('td',ranked?String(row.rank):String((page-1)*6+index+1));
+          rank.className='record-rank';
+          const identity=element('td');
+          if(ranked) identity.textContent=row.nickname;
+          else {
+            const courseLabel=result.courses[row.course]?.label??row.course;
+            identity.classList.add('record-course-cell');
+            identity.append(element('strong',courseLabel));
+          }
+          const time=element('td',timeText(row.tenths/10));
+          time.className='record-number';
+          tr.append(rank,identity,time);
+          rows.append(tr);
+        });
         status.textContent=result.rows.length?'':'아직 완주 기록이 없습니다.';
-        if (page>1) pages.append(button('이전',()=>load(page-1)));
-        if (result.next) pages.append(button('다음',()=>load(page+1)));
+        if (page>1) pages.append(button('← 이전',()=>load(page-1)));
+        pages.append(element('span',`${page} 페이지`));
+        if (result.next) pages.append(button('다음 →',()=>load(page+1)));
       } catch (error) {if (requested===revision&&rows.isConnected) showError(error,status);}
     }
     if (ranked) {
-      catalog().then(({courses:list,ruleVersions})=>{
+      catalog().then(({courses:list})=>{
         if (!status.isConnected) return;
         for (const [id,course] of Object.entries(list)) filter.add(new Option(course.label,id));
-        for(const [id,label] of Object.entries(ruleVersions))versions.add(new Option(label,id));
-        $('record-filter').append(filter,versions);
-        versions.onchange=()=>load();
+        const courseLabel=element('label','코스');
+        filter.className='record-select';
+        courseLabel.append(filter);
+        $('record-filter').append(courseLabel);
         filter.onchange=()=>load();
         load();
       }).catch(error=>{if (status.isConnected) showError(error,status);});
@@ -110,7 +137,7 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
       '<p class="small-note">방향키 이동 · Shift 달리기 · M 길찾기 · E 상호작용</p></section>';
     const actions=$('menu-actions');
     if (!user) {
-      $('intro-note').textContent='공덕동에서 시청역 근처 회사까지 출근하세요.';
+      $('intro-note').textContent='공덕동에서 충정로역 근처 회사까지 출근하세요.';
       actions.append(button('ID 생성',()=>accountForm('signup'),'btn light'),button('로그인',()=>accountForm('login')));
       return;
     }
@@ -123,7 +150,7 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
     } else {
       actions.append(button('게임 시작',chooseCourse,'btn light'),button('내 기록',()=>listRecords(false)),button('랭킹',()=>listRecords(true)));
     }
-    actions.append(button('교통 데이터 확인',()=>showTraffic(openDialog,closeDialog)),button('로그아웃',async event=>{
+    actions.append(button('로그아웃',async event=>{
       const control=event.currentTarget;
       control.disabled=true;
       try {await api('logout',{});setAccount(null);menu();}

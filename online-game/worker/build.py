@@ -13,7 +13,7 @@ TYPES = {
     ".txt": "text/plain; charset=utf-8",
 }
 FILES = (
-    "index.html", "style.css", "game.js", "world.js", "traffic-data.js",
+    "index.html", "style.css", "game.js", "world.js",
     "vendor/three.module.js", "vendor/three.core.js", "vendor/THREE-LICENSE.txt",
 )
 assets = {}

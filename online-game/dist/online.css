@@ -1,11 +1,33 @@
 #dialog .dialog-card { max-height: calc(100dvh - 32px); overflow: auto; }
+#dialog .records-modal { width:min(740px,95vw); max-height:calc(100dvh - 32px); padding:0; overflow:hidden; }
 #dialog .online-pause { box-shadow: 0 0 0 200vmax #142b30; }
 .btn:disabled { opacity: .55; cursor: progress; }
 #account-status, #course-status, #record-status { min-height: 1.35em; }
-.online-records { padding-left: 1.4em; font-variant-numeric: tabular-nums; }
-.online-records li { margin: .4em 0; }
-.online-records .mine { color: #145846; font-weight: 700; }
-#record-filter select { max-width: 100%; padding: .4em; }
+.record-dialog { width:100%; }
+.record-header { padding:22px 26px 18px; background:#173739; color:#f4f3e9; }
+.record-header small { color:#aee8cd; font-size:9px; letter-spacing:2px; }
+.record-header h2 { margin:7px 0 2px; font-size:25px; }
+.record-header p { margin:0; color:#d3e0d7!important; }
+.record-content { padding:14px 24px 18px; }
+.record-filters { display:flex; flex-wrap:wrap; gap:9px; margin-bottom:8px; }
+.record-filters label { display:grid; gap:5px; color:#64756f; font-size:11px; font-weight:700; }
+.record-select { max-width:min(100%,310px); padding:9px 30px 9px 10px; border:1px solid #ccd7ce; border-radius:7px; background:#fffefa; color:#173739; }
+.record-note { margin:9px 0!important; font-size:11px!important; }
+.record-note span { display:block; margin-top:3px; color:#74837b; font-size:10px; }
+.record-status { min-height:1.3em; margin:8px 0!important; }
+.record-table-wrap { width:100%; overflow:visible; }
+.record-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:13px; }
+.record-table th { padding:7px 11px; border-bottom:1px solid #cfd8d0; color:#6b7c73; text-align:left; font-size:10px; font-weight:700; }
+.record-table td { padding:9px 11px; border-bottom:1px solid #e1e6df; }
+.record-table tbody tr.mine { background:#e6f1e9; color:#164b39; font-weight:700; }
+.record-rank { width:56px; color:#55736a; font-weight:700; }
+.record-number { width:115px; text-align:right!important; font-variant-numeric:tabular-nums; font-size:14px!important; font-weight:800; white-space:nowrap; }
+.record-table td small { display:block; margin-top:4px; color:#728078; font-size:10px; font-weight:400; }
+.record-pages { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:9px; color:#61756b; font-size:11px; }
+.record-pages button { min-height:38px; padding:0 12px; border:1px solid #c8d4cb; border-radius:7px; background:#f1f4eb; color:#173739; }
+.dialog-card .record-close { width:100%; margin-top:12px; }
+@media(max-width:520px) { .record-header{padding:16px 18px}.record-content{padding:12px 16px 15px}.record-table th,.record-table td{padding:8px 6px}.record-rank{width:42px}.record-number{width:82px}.record-table{font-size:12px} }
+@media(max-height:700px) { .record-header{padding:12px 18px}.record-header h2{font-size:22px;margin:4px 0}.record-content{padding:9px 16px 12px}.record-note{display:none}.record-table th,.record-table td{padding:7px 8px}.record-pages{margin-top:6px}.dialog-card .record-close{min-height:40px;margin-top:8px} }
 a.btn { text-decoration: none; }
 body.admin { margin: 0; background: #f4f3e9; color: #173739; font: 15px/1.5 system-ui,sans-serif; }
 .admin main { max-width: 1360px; margin: auto; padding: 1.7rem; }
@@ -33,3 +55,14 @@ body.admin { margin: 0; background: #f4f3e9; color: #173739; font: 15px/1.5 syst
 body.playing #shade { opacity: 0; }
 .top-right a { color: inherit; text-underline-offset: .24em; }
 body.playing .top-right a { display: none; }
+
+/* Course chooser follows the compact records dialog visual system. */
+.course-picker { padding-top: 10px; }
+.course-choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:14px 0 4px; }
+.course-choice { display:grid; gap:8px; min-height:142px; padding:16px; border:1px solid #cbd8ce; border-radius:10px; background:#fffefa; color:#173739; text-align:left; cursor:pointer; transition:transform .15s ease,border-color .15s ease,background .15s ease; }
+.course-choice:hover,.course-choice:focus-visible { transform:translateY(-2px); border-color:#39866a; background:#edf5ed; outline:none; }
+.course-choice .course-kind { color:#438568; font-size:9px; font-weight:800; letter-spacing:1.5px; }
+.course-choice strong { font-size:18px; line-height:1.35; }
+.course-choice small { color:#687971; font-size:12px; line-height:1.5; }
+.course-choice b { align-self:end; color:#17443d; font-size:11px; }
+@media(max-width:560px) { .course-choices { grid-template-columns:1fr; gap:9px; } .course-choice { min-height:112px; padding:13px; } }

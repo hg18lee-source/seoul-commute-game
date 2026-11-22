@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { courses, expiryMs, initialState, rules, ruleVersions, validateBatch } from './rules.mjs';
 
+const recordPageSize = 6;
+
 export const uuid = value => typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 export const knownCourse = value => typeof value==='string'&&Object.hasOwn(courses,value);
 export const allow = (body,status=200,reason='ok') => ({body,status,outcome:'ALLOW',reason});
@@ -14,7 +16,7 @@ export async function start(db, ctx, body, now) {
   const id=randomUUID();
   await db.query(
     "INSERT INTO commute_plays(id,user_id,session_hash,course,rules,status,started_at,seen_at,state) VALUES($1,$2,$3,$4,$5,'active',$6,$6,$7)",
-    [id,ctx.user.id,ctx.tokenHash,body.course,rules,date(now),initialState()]);
+    [id,ctx.user.id,ctx.tokenHash,body.course,rules,date(now),initialState(body.course)]);
   ctx.playId=id;
   return allow({id,course:body.course,rules},201,'play_started');
 }
@@ -51,8 +53,10 @@ export async function advance(db, ctx, body, action, now) {
   }
   const {state,pausedMs,pausedAt,checked}=result;
   const ended=action==='play-finish';
-  if (ended&&(state.paused||state.point.stage!=='office'||state.point.hp<=0
-      ||Math.hypot(state.point.x,state.point.z+26)>=1.215)) {
+  const requiredFinishStage=courses[p.course].transport==='train'?'exit-street':'office';
+  const finishPoint=courses[p.course].finishPoint??{x:0,z:-26,radius:1.2};
+  if (ended&&(state.paused||state.point.stage!==requiredFinishStage
+      ||Math.hypot(state.point.x-finishPoint.x,state.point.z-finishPoint.z)>=finishPoint.radius+.015)) {
     await end(db,p.id,'invalid','portal_required');
     return block(422,'portal_required');
   }
@@ -66,7 +70,7 @@ export async function advance(db, ctx, body, action, now) {
   const args=[ctx.user.id,p.course,p.rules];
   const {rows:[prior]}=await db.query(
     'SELECT min(tenths) AS best FROM commute_records WHERE user_id=$1 AND course=$2 AND rules=$3',args);
-  const tenths=Math.round((now-Number(p.start_ms)-pausedMs)/100);
+  const tenths=Math.round((now-Number(p.start_ms)-pausedMs)/100)+Math.round((state.point.penalty??0)*10);
   await db.query('INSERT INTO commute_records(play_id,user_id,course,rules,tenths,finished_at) VALUES($1,$2,$3,$4,$5,$6)',
     [p.id,...args,tenths,date(now)]);
   return allow({tenths,best:prior.best===null?null:Math.min(prior.best,tenths),course:p.course},201,'record_saved');
@@ -75,9 +79,9 @@ export async function advance(db, ctx, body, action, now) {
 export async function records(db, ctx, url) {
   const page=pageNumber(url);
   const {rows}=await db.query(
-    'SELECT play_id,course,rules,tenths,finished_at FROM commute_records WHERE user_id=$1 ORDER BY finished_at DESC,play_id LIMIT 26 OFFSET $2',
-    [ctx.user.id,(page-1)*25]);
-  return allow({rows:rows.slice(0,25),next:rows.length>25,page,courses,ruleVersions});
+    'SELECT play_id,course,rules,tenths,finished_at FROM commute_records WHERE user_id=$1 ORDER BY finished_at DESC,play_id LIMIT 7 OFFSET $2',
+    [ctx.user.id,(page-1)*recordPageSize]);
+  return allow({rows:rows.slice(0,recordPageSize),next:rows.length>recordPageSize,page,courses,ruleVersions});
 }
 
 export function pageNumber(url) {
@@ -94,6 +98,6 @@ export async function ranking(db, ctx, url) {
     'WITH best AS (SELECT user_id,min(tenths) AS tenths FROM commute_records WHERE course=$1 AND rules=$2 GROUP BY user_id), '+
     'ranked AS (SELECT user_id,tenths,rank() OVER (ORDER BY tenths)::int AS rank FROM best) '+
     'SELECT u.nickname,r.tenths,r.rank,r.user_id=$3 AS mine FROM ranked r JOIN commute_users u ON r.user_id=u.id '+
-    'ORDER BY r.rank,r.user_id LIMIT 26 OFFSET $4',[course,version,ctx.user.id,(page-1)*25]);
-  return allow({rows:rows.slice(0,25),next:rows.length>25,page,course,rules:version});
+    'ORDER BY r.rank,r.user_id LIMIT 7 OFFSET $4',[course,version,ctx.user.id,(page-1)*recordPageSize]);
+  return allow({rows:rows.slice(0,recordPageSize),next:rows.length>recordPageSize,page,course,rules:version});
 }

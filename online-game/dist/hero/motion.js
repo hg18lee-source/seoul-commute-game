@@ -125,15 +125,16 @@ export class CommuterMotion {
       const pitch=(t>=stance ? Math.sin(tau*swing)*.20 : 0)*gait;
       this.solveLeg(limb,footX,footY,footZ,pitch);
       const armCycle=Math.cos(t*tau);
+      const grab=gripMix*(index===1?1:0);
       limb.arm.rotation.set(
-        mix(armCycle*gait*mix(.37,.61,runMix)-gait*.10,-1.68,gripMix),
-        side*.055, -side*(.035+gait*.045)
+        mix(armCycle*gait*mix(.37,.61,runMix)-gait*.10,1.68,grab),
+        side*.055, mix(-side*(.035+gait*.045),side*.35,grab)
       );
       limb.forearm.rotation.set(
-        mix(.06+gait*mix(.19,.86,runMix)*(1+.35*armCycle),.78,gripMix),
+        mix(.06+gait*mix(.19,.86,runMix)*(1+.35*armCycle),.78,grab),
         0, side*.07
       );
-      limb.hand.rotation.x=-.10*gait;
+      limb.hand.rotation.x=-.10*gait-.18*grab;
     }
   }
 

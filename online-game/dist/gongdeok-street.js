@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 import { addShop, cladding } from './storefronts.js';
 import { addTraffic, placeEntrance } from './transit-scene.js';
+import { BUS_COURSE } from './journey.js';
 
 const stone=0xc0b8a9, warm=0xcbbba5, concrete=0xacaaa1;
 const ink=0x303d3c, metal=0x526561, wood=0x9a7654;
@@ -77,7 +78,7 @@ function signage(parent,title,sub,w,h,x,y,z,yaw,background) {
   parent.add(sign);
 }
 
-export function buildGongdeok(parent,entranceAsset) {
+export function buildGongdeok(parent,entranceAsset,busOnly=false) {
   const group=new THREE.Group();
   group.name='Gongdeok exterior';
   parent.add(group);
@@ -119,7 +120,7 @@ export function buildGongdeok(parent,entranceAsset) {
     ground.receiveShadow=true;
     group.add(ground);
   };
-  if(entranceAsset) {
+  if(entranceAsset&&!busOnly) {
     paving(-8.63,-13,3.24,105);
     paving(3.63,-13,13.24,105);
     paving(-5,8.65,4.02,61.7);
@@ -329,7 +330,7 @@ export function buildGongdeok(parent,entranceAsset) {
 
   // Stair volume is behind the western movement bound. The station approach stays walkable.
   const st=-24;
-  if(!entranceAsset) {
+  if(!entranceAsset&&!busOnly) {
   box(-14.87,1.34,st,.24,2.78,3.75,0x46544f,true);
   box(-13.3,-.87,st,3.6,.14,3.48,0x777f74,true);
   for (let i=0;i<7;i++) {
@@ -351,7 +352,7 @@ export function buildGongdeok(parent,entranceAsset) {
   signage(group,'⑤ 공덕역','지하철 입구',2.85,.66,-8.55,2.88,st+2.586,0,'#4f466c');
   box(-8.55,2.88,st+2.51,2.99,.69,.12,0x4f466c,true);
 
-  } else {
+  } else if(entranceAsset&&!busOnly) {
     signage(group,'공덕역  1번 출구','5 · 6호선',3.75,.65,-5,2.68,-22.85,0,'#51436a');
     frame(-6.72,1.4,-22.9,.075,2.8,.085);
     frame(-3.28,1.4,-22.9,.075,2.8,.085);
@@ -372,8 +373,8 @@ export function buildGongdeok(parent,entranceAsset) {
   box(10.66,1.27,bz+2.93,.28,2.54,.80,0x495f55,true);
   box(10.51,.80,bz+2.93,.042,.78,.65,0xc5c8b2);
   for (let i=0;i<4;i++) box(10.48,.55+i*.145,bz+2.94,.037,.036,.46,0x85948a);
-  signage(group,'7016','광화문 방면',.77,.62,10.48,1.99,bz+2.93,-Math.PI/2,'#385a4c');
-  signage(group,'7016','공덕역1번출구',2.33,.56,9.21,2.97,bz+2.629,0,'#385a4c');
+  signage(group,BUS_COURSE.busNumber,BUS_COURSE.destinationLabel+' 방면',.77,.62,10.48,1.99,bz+2.93,-Math.PI/2,'#385a4c');
+  signage(group,BUS_COURSE.busNumber,'공덕역 정류장',2.33,.56,9.21,2.97,bz+2.629,0,'#385a4c');
   box(9.21,2.97,bz+2.55,2.45,.62,.14,0x385a4c,true);
   box(8.76,.017,-42,1.06,.023,3.14,0xbbad83);
   for (const z of [-43.53,-40.47]) box(8.76,.032,z,1.06,.014,.045,0xe4d9b4);
@@ -391,12 +392,12 @@ export function buildGongdeok(parent,entranceAsset) {
   return group;
 }
 
-export function populateGongdeok(world) {
-  buildGongdeok(world.root,world.transit.entrance);
+export function populateGongdeok(world,{busOnly=Boolean(world.busOnly)}={}) {
+  buildGongdeok(world.root,busOnly?null:world.transit.entrance,busOnly);
   world.traffic=addTraffic(world.root);
   world.streetBus=world.busModel(12.44,-42);
-  if(!world.transit.entrance) world.spot('station','역으로 들어가기',-5,-24);
-  world.spot('bus','버스 정류장에서 기다리기',7,-42);
+  if(!busOnly&&!world.transit.entrance) world.spot('station','역으로 들어가기',-5,-24);
+  world.spot('bus',BUS_COURSE.busNumber+'번 버스 탑승',7,-42,{boarding:true,markerLabel:BUS_COURSE.busNumber+'번 탑승 위치'});
   world.bounds={minX:-10,maxX:10,minZ:-48,maxZ:32};
-  world.people(14,{x:7,z:76,offset:-5});
+  world.people(14,{x:7,z:76,offset:-5,roamMultiplier:3});
 }

@@ -1,13 +1,16 @@
+import { describeTarget } from './guidance.mjs';
+
 export const routes = Object.freeze({ rail: '지하철 5호선', bus: '260번 버스' });
 export const steps = Object.freeze({
   walk: { title: '방향키로 이동', hint: '↑를 눌러 앞의 초록 표시까지 걸어가세요.', topic: 'move', point: [0, 5] },
   skills: { title: '대각선과 달리기', hint: '방향키 두 개로 대각선 이동하고, Shift와 방향키를 함께 눌러 달려보세요.', topic: 'run' },
   interact: { title: '표시에서 상호작용', hint: '표시 근처에서 E를 눌러 안내를 확인하세요.', topic: 'interact', point: [0, 1] },
   choose: { title: '연습 경로 확인', hint: '선택한 경로를 확인하고 이동하세요.' },
+  entranceApproach: { title: '공덕역 계단 입구', hint: '입구 왼쪽 통로 표시로 이동하세요.', topic: 'rail', point: [-6, -21] },
   entrance: { title: '공덕역 입구', hint: '왼쪽 계단 통로로 내려가 아래 표시까지 걸으세요.', topic: 'rail', point: [-6, -32.1] },
   gate: { title: '교통카드 찍기', hint: '개찰구 근처에서 E를 눌러 문을 여세요.', topic: 'interact', point: [0, 4.69] },
   pass: { title: '개찰구 통과', hint: '문이 열리면 중앙에서 ↑를 눌러 통과하세요.', topic: 'rail', point: [0, 1.6] },
-  platform: { title: '승강장 방향 확인', hint: '오른쪽 애오개·충정로 방면을 선택하세요. 왼쪽은 마포 방면입니다.', topic: 'rail', point: [4.45, 0] },
+  platform: { title: '승강장 방향 확인', hint: '오른쪽 애오개·충정로 방면을 선택하세요. 왼쪽은 마포 방면입니다.', topic: 'rail', point: [2.7, 1.5] },
   railBoard: { title: '열린 열차 문으로 탑승', hint: '열린 문 표시에서 →를 눌러 걸어 타세요.', topic: 'rail', point: [4.45, 0] },
   railRide: { title: '충정로역 정차 대기', hint: '정차 안내가 나올 때까지 잠시 기다리세요.' },
   railExit: { title: '열린 열차 문으로 하차', hint: '앞쪽 문 표시까지 ↑로 걸어 내려가세요.', topic: 'rail', point: [0, -10.9] },
@@ -20,7 +23,7 @@ export const steps = Object.freeze({
 
 const sequence = {
   walk: 'skills', skills: 'interact', interact: 'choose',
-  entrance: 'gate', gate: 'pass', pass: 'platform', platform: 'railBoard',
+  entranceApproach: 'entrance', entrance: 'gate', gate: 'pass', pass: 'platform', platform: 'railBoard',
   railBoard: 'railRide', railRide: 'railExit', railExit: 'complete',
   busStop: 'busBoard', busBoard: 'bell', bell: 'busRide',
   busRide: 'busExit', busExit: 'complete',
@@ -36,6 +39,8 @@ const topics = {
 export const schemas = Object.freeze({
   show_controls: Object.freeze({ topic: Object.freeze(Object.keys(topics)) }),
   get_tutorial_status: {},
+  get_current_guidance: {},
+  locate_gate: {},
   select_tutorial_route: Object.freeze({ route: Object.freeze(Object.keys(routes)) }),
   start_tutorial: Object.freeze({ route: Object.freeze(Object.keys(routes)) }),
   restart_tutorial: {},
@@ -48,7 +53,8 @@ export function createTutorial() {
   const reset = (phase, route) => {
     state = { phase, route, stage: phase === 'playing' ? 'walk' : null, completed: [], skipped: [], diagonal: 0, running: 0, elapsed: 0, serial: state.serial + 1, highlight: null };
   };
-  function execute(name, args = {}) {
+  const guide = (context = {}) => describeTarget(state.stage, steps[state.stage]?.point, context);
+  function execute(name, args = {}, context = {}) {
     const respond = (outcome, message) => ({ outcome, message, state: snapshot() });
     if (!Object.hasOwn(schemas, name) || !args || Object.getPrototypeOf(args) !== Object.prototype)
       return respond('BLOCK', '허용되지 않는 기능 또는 입력입니다.');
@@ -60,6 +66,18 @@ export function createTutorial() {
       case 'show_controls':
         state.highlight = args.topic;
         return respond('ALLOW', topics[args.topic]);
+      case 'locate_gate':
+        if (!['gate', 'pass'].includes(state.stage)) {
+          return respond('ALLOW', '개찰구는 공덕역 계단 아래 대합실에 있습니다. 지금 목표는 ' +
+            (steps[state.stage]?.title ?? '연습 경로 선택') + '입니다.');
+        }
+        // The same highlighted approach that controls the interaction.
+      case 'get_current_guidance': {
+        const current = guide(context);
+        if (!current.text) return respond('ALLOW', '먼저 연습을 시작하세요.');
+        state.highlight = 'target';
+        return respond('ALLOW', current.key + ' · ' + current.text);
+      }
       case 'get_tutorial_status':
         return respond('ALLOW', state.phase === 'playing' ? steps[state.stage].hint :
           state.phase === 'complete' ? '연습을 마쳤습니다. 처음부터 하거나 나갈 수 있습니다.' :
@@ -86,7 +104,7 @@ export function createTutorial() {
   function advance(skipped = false) {
     const current = state.stage;
     (skipped ? state.skipped : state.completed).push(current);
-    state.stage = current === 'choose' ? (state.route === 'rail' ? 'entrance' : 'busStop') : sequence[current];
+    state.stage = current === 'choose' ? (state.route === 'rail' ? 'entranceApproach' : 'busStop') : sequence[current];
     state.elapsed = 0;
     state.highlight = null;
     if (state.stage === 'complete') state.phase = 'complete';
@@ -94,27 +112,24 @@ export function createTutorial() {
   function practice(input) {
     if (state.phase !== 'playing') return false;
     const before = state.stage;
-    const near = radius => {
-      const point = steps[before].point;
-      return point && Math.hypot(input.x - point[0], input.z - point[1]) <= radius;
-    };
+    const target = guide(input);
     if (input.skip) advance(true);
     else switch (before) {
-      case 'walk': if (near(.85)) advance(); break;
+      case 'walk': if (target.ready) advance(); break;
       case 'skills':
         if (input.moved && input.diagonal) state.diagonal += input.dt;
         if (input.moved && input.running) state.running += input.dt;
         if (state.diagonal >= .25 && state.running >= .35) advance();
         break;
       case 'interact': case 'gate': case 'busStop': case 'busBoard': case 'bell': case 'busExit':
-        if (input.interact && near(1.35)) advance();
+        if (input.interact && target.ready) advance();
         break;
       case 'choose': if (input.confirmRoute) advance(); break;
-      case 'entrance': if (near(1.1)) advance(); break;
-      case 'pass': if (input.gateOpen && input.z <= 2.05 && Math.abs(input.x) <= .5) advance(); break;
-      case 'platform': if (near(1.1)) advance(); break;
-      case 'railBoard': if (near(.85) && input.right) advance(); break;
-      case 'railExit': if (near(.75) && input.forward) advance(); break;
+      case 'entranceApproach': case 'entrance': if (target.ready) advance(); break;
+      case 'pass': if (target.ready && input.z <= 2.05 && Math.abs(input.x) <= .44) advance(); break;
+      case 'platform': if (target.ready) advance(); break;
+      case 'railBoard': if (target.ready && input.right) advance(); break;
+      case 'railExit': if (target.ready && input.forward) advance(); break;
       case 'railRide': case 'busRide':
         state.elapsed += input.dt ?? 0;
         if (state.elapsed >= 2.5) advance();
@@ -122,5 +137,5 @@ export function createTutorial() {
     }
     return before !== state.stage;
   }
-  return { snapshot, execute, practice };
+  return { snapshot, execute, practice, guide };
 }

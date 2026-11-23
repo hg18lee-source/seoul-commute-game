@@ -14,6 +14,9 @@
     <div class="brand">대중교통 출근 게임 <span>연습 모드</span></div>
     <div id="transit" role="status" hidden></div>
   </header>
+  <div id="target" class="target" hidden><span id="target-arrow" aria-hidden="true">▲</span><strong id="target-name"></strong><small id="target-distance"></small></div>
+  <output id="completion" class="completion" aria-live="polite" hidden></output>
+  <div id="action-bar" class="action-bar" role="status" hidden><kbd id="action-key"></kbd><span id="action-text"></span></div>
   <main class="panels">
     <section class="card guide" aria-labelledby="heading">
       <p id="progress" class="eyebrow">AI 출근 튜토리얼</p>
@@ -26,7 +29,7 @@
       <button id="start" class="primary" type="button" disabled>튜토리얼 시작</button>
       <button id="continue" class="primary" type="button" hidden>이 경로로 계속</button>
       <div id="finish" hidden>
-        <button id="official" class="primary" type="button">본 게임 시작</button>
+        <button id="official" class="primary" type="button">본 게임 준비하기</button>
         <p id="connection" role="status" hidden>본 게임은 로그인이 필요합니다. 이 화면은 본 게임 연결을 위한 안내입니다.</p>
       </div>
       <div id="controls" class="keys" aria-label="조작">

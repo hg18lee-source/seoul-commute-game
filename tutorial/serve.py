@@ -6,7 +6,7 @@ from urllib.parse import unquote, urlsplit
 
 TUTORIAL = Path(__file__).resolve().parent
 ASSETS = TUTORIAL.parent / "online-game" / "dist"
-PAGE_FILES = {"index.html", "style.css", "app.mjs", "state.mjs", "dialogue.mjs", "input.mjs"}
+PAGE_FILES = {"index.html", "style.css", "app.mjs", "state.mjs", "dialogue.mjs", "input.mjs", "guidance.mjs", "visual-guide.mjs"}
 ASSET_FILES = {"world.js", "gongdeok-street.js", "transit-scene.js", "storefronts.js", "journey.js"}
 ASSET_FOLDERS = {"hero", "vendor", "transit-assets"}
 

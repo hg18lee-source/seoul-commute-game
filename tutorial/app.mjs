@@ -1,32 +1,45 @@
 import { World } from '/assets/world.js';
 import { loadCommuter, movementSpeed } from '/assets/hero/motion.js';
-import { entranceHeight, loadTransit } from '/assets/transit-scene.js';
+import { loadTransit } from '/assets/transit-scene.js';
 import { createTutorial, routes, steps } from './state.mjs';
 import { createDialogue } from './dialogue.mjs';
 import { createPracticeInput } from './input.mjs';
+import { createVisualGuide } from './visual-guide.mjs';
 
 const byId = id => document.getElementById(id);
 const tutorial = createTutorial();
-const dialogue = createDialogue(tutorial);
+const dialogue = createDialogue(tutorial, undefined, readPosition);
+const integrated = location.pathname === '/tutorial/';
+const listeners = new AbortController();
 const inputKeys = createPracticeInput();
 const editable = element => Boolean(element?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable=false])'));
 let world;
-let marker;
+let visualGuide;
+let frameId;
+let audio;
+let completedUntil = 0;
+let disposed = false;
 let sceneKey;
 let clock = 0;
 let loaded = false;
 
+function readPosition() {
+  if (!world) return {};
+  const { x, z } = world.hero.position;
+  return { x, z, gateOpen: world.gate?.open };
+}
+
 function scene(mode, data, bounds) {
+  visualGuide.clear();
   world.setStage(mode, data);
   if (bounds) world.bounds = bounds;
-  marker = null;
 }
 
 function loadScene(state) {
   if (!world) return;
   const stage = state.stage;
   let next;
-  if (['entrance'].includes(stage)) next = 'entrance';
+  if (['entranceApproach', 'entrance'].includes(stage)) next = 'entrance';
   else if (['gate', 'pass'].includes(stage)) next = 'hall';
   else if (['platform', 'railBoard'].includes(stage)) next = 'platform';
   else if (['railRide', 'railExit', 'bell', 'busRide', 'busExit'].includes(stage)) next = 'vehicle';
@@ -57,28 +70,12 @@ function render(state = tutorial.snapshot()) {
   const current = steps[state.stage];
   loadScene(state);
   if (world) {
-    if (marker) marker.ring.visible = false;
-    if (current?.point) {
-      const [x, z] = current.point;
-      if (!marker || marker.x !== x || marker.z !== z) {
-        if (marker) {
-          world.root.remove(marker.ring);
-          marker.ring.geometry.dispose();
-          marker.ring.material.dispose();
-          world.spots = world.spots.filter(spot => spot !== marker);
-        }
-        marker = world.spot('tutorial', current.title, x, z);
-        marker.ring.position.y = world.mode === 'platform' ? .34 :
-          (state.stage === 'entrance' ? entranceHeight(x, z) : 0) + .05;
-      }
-      marker.ring.visible = true;
-      marker.ring.scale.setScalar(state.highlight && state.highlight === current.topic ? 1.5 : 1);
-      marker.ring.material.color.set(state.highlight && state.highlight === current.topic ? '#fff073' : '#87ffab');
-    }
+    visualGuide.show(state.stage, tutorial.guide(readPosition()));
     if (state.stage === 'pass') world.openGate(clock);
     if (world.mode === 'vehicle') world.setVehicleDestination(
       ['busExit', 'railExit'].includes(state.stage) ? '충정로역 정차 · 문 열림' : '다음 충정로역');
   }
+  byId('action-bar').hidden = !playing;
   byId('progress').textContent = state.route ? routes[state.route] + ' · 연습' : 'AI 출근 튜토리얼';
   byId('heading').textContent = current?.title ?? (complete ? '출근 연습 완료' : '출근길을 연습하세요');
   byId('hint').textContent = current?.hint ?? (complete
@@ -93,7 +90,7 @@ function render(state = tutorial.snapshot()) {
   if (!complete) byId('connection').hidden = true;
   byId('skip').disabled = !playing;
   byId('restart').disabled = ready;
-  byId('exit').disabled = ready;
+  byId('exit').disabled = ready && !integrated;
   byId('count').textContent = state.completed.length;
   byId('goals').replaceChildren(...[...state.completed.map(key => [key, '완료']), ...state.skipped.map(key => [key, '건너뜀'])]
     .map(([key, label]) => Object.assign(document.createElement('li'), { textContent: steps[key].title + ' · ' + label })));
@@ -115,7 +112,13 @@ function render(state = tutorial.snapshot()) {
 function updateAfter(result, before) {
   if (result.state?.serial !== undefined && result.state.serial !== before.serial) {
     inputKeys.clear();
+    completedUntil = 0;
+    byId('completion').hidden = true;
     sceneKey = undefined;
+  }
+  if (integrated && result.outcome === 'ALLOW' && result.state?.phase === 'ready' && (before.phase !== 'ready' || result.name === 'exit_tutorial')) {
+    location.assign('/');
+    return;
   }
   render();
 }
@@ -129,7 +132,14 @@ function control(name, args) {
 }
 
 function practice(input) {
+  const previous = tutorial.snapshot().stage;
   if (!tutorial.practice(input)) return false;
+  if (!input.skip) {
+    completedUntil = performance.now() + 1300;
+    byId('completion').textContent = '✓ 완료 · ' + steps[previous].title;
+    byId('completion').hidden = false;
+    chime();
+  }
   dialogue.clear();
   byId('feedback').textContent = '';
   render();
@@ -137,12 +147,10 @@ function practice(input) {
 }
 
 function interaction() {
-  const state = tutorial.snapshot();
-  const p = world.hero.position;
-  if (!practice({ interact: true, x: p.x, z: p.z })) {
-    byId('feedback').textContent = state.stage === 'platform'
-      ? '방향 표지를 보고 오른쪽 승강장으로 걸어가세요.'
-      : '현재 안내에 표시된 위치와 조작을 확인하세요.';
+  const position = readPosition();
+  if (!practice({ interact: true, ...position })) {
+    const guide = tutorial.guide(position);
+    byId('feedback').textContent = guide.key + ' · ' + guide.text;
   }
 }
 
@@ -158,8 +166,38 @@ byId('start').onclick = () => {
 byId('continue').onclick = () => practice({ confirmRoute: true });
 byId('skip').onclick = () => practice({ skip: true });
 byId('restart').onclick = () => control('restart_tutorial');
-byId('exit').onclick = () => control('exit_tutorial');
-byId('official').onclick = () => { byId('connection').hidden = false; };
+byId('exit').onclick = () => {
+  if (integrated && tutorial.snapshot().phase === 'ready') location.assign('/');
+  else control('exit_tutorial');
+};
+byId('official').onclick = () => {
+  if (integrated) location.assign('/?practice=' + tutorial.snapshot().route);
+  else byId('connection').hidden = false;
+};
+
+function armAudio() {
+  if (disposed) return;
+  try {
+    if (!audio && globalThis.AudioContext) audio = new AudioContext();
+    audio?.resume().catch(() => {});
+  } catch { /* An unavailable audio device must not interrupt practice. */ }
+}
+
+function chime() {
+  if (audio?.state !== 'running') return;
+  const tone = audio.createOscillator();
+  const gain = audio.createGain();
+  const now = audio.currentTime;
+  tone.frequency.setValueAtTime(580, now);
+  tone.frequency.setValueAtTime(850, now + .07);
+  gain.gain.setValueAtTime(.055, now);
+  gain.gain.exponentialRampToValueAtTime(.001, now + .15);
+  tone.connect(gain).connect(audio.destination);
+  tone.start(now);
+  tone.stop(now + .16);
+}
+
+document.addEventListener('pointerdown', armAudio, { signal: listeners.signal, once: true });
 
 function appendMessage(style, text) {
   const log = byId('conversation');
@@ -210,13 +248,41 @@ addEventListener('keydown', event => {
     repeat: event.repeat,
   });
   if (action === 'ignore') return;
+  if (!audio) armAudio();
   event.preventDefault();
   if (action === 'interact') interaction();
-});
-addEventListener('keyup', event => inputKeys.release(event.code));
-addEventListener('blur', () => inputKeys.clear());
-document.addEventListener('visibilitychange', () => inputKeys.clear());
-document.addEventListener('focusin', event => { if (editable(event.target)) inputKeys.clear(); });
+}, { signal: listeners.signal });
+addEventListener('keyup', event => inputKeys.release(event.code), { signal: listeners.signal });
+addEventListener('blur', inputKeys.clear, { signal: listeners.signal });
+document.addEventListener('visibilitychange', inputKeys.clear, { signal: listeners.signal });
+document.addEventListener('focusin', event => { if (editable(event.target)) inputKeys.clear(); }, { signal: listeners.signal });
+addEventListener('pagehide', () => {
+  disposed = true;
+  listeners.abort();
+  inputKeys.clear();
+  cancelAnimationFrame(frameId);
+  audio?.close().catch(() => {});
+  visualGuide?.clear();
+  if (!world) return;
+  const materials = new Set();
+  const geometries = new Set();
+  const textures = new Set();
+  const collect = object => {
+    if (object.geometry) geometries.add(object.geometry);
+    for (const m of Array.isArray(object.material) ? object.material : [object.material])
+      if (m) materials.add(m);
+  };
+  world.scene.traverse(collect);
+  for (const loaded of Object.values(world.transit)) loaded.scene.traverse(collect);
+  for (const material of materials) for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
+  world.clear();
+  for (const texture of textures) texture.dispose();
+  for (const geometry of geometries) geometry.dispose();
+  for (const material of materials) material.dispose();
+  world.renderer.dispose();
+  world.renderer.forceContextLoss();
+}, { once: true });
+addEventListener('pageshow', event => { if (event.persisted && disposed) location.reload(); });
 
 function frame(now) {
   const dt = Math.min(.05, Math.max(0, now / 1000 - clock));
@@ -231,20 +297,34 @@ function frame(now) {
     const { x, z } = world.hero.position;
     practice({ x, z, dt, moved, running, diagonal: Boolean(dx && dz), forward: dz < 0, right: dx > 0, gateOpen: world.gate?.open });
   }
-  world.update(dt, clock, { rideMoving: ['railRide', 'busRide'].includes(state.stage) });
-  requestAnimationFrame(frame);
+  const current = tutorial.snapshot();
+  world.update(dt, clock, { rideMoving: ['railRide', 'busRide'].includes(current.stage) });
+  if (current.phase === 'playing') {
+    const guide = tutorial.guide(readPosition());
+    if (byId('action-key').textContent !== guide.key) byId('action-key').textContent = guide.key;
+    if (byId('action-text').textContent !== guide.text) byId('action-text').textContent = guide.text;
+    byId('action-bar').classList.toggle('ready', guide.ready);
+    visualGuide.update(guide, current.highlight === 'target' || (current.highlight && current.highlight === steps[current.stage]?.topic));
+  }
+  if (now >= completedUntil) byId('completion').hidden = true;
+  frameId = requestAnimationFrame(frame);
 }
 
 try {
   const [hero, transit] = await Promise.all([loadCommuter(), loadTransit(() => {})]);
   if (transit.failures.length) throw new Error('불러오지 못한 모델 · ' + transit.failures.join(', '));
-  world = new World(byId('world'), hero);
-  world.transit = transit.loaded;
-  loaded = true;
-  byId('chat').querySelector('button').disabled = false;
-  render();
-  requestAnimationFrame(frame);
+  if (!disposed) {
+    world = new World(byId('world'), hero, { signal: listeners.signal });
+    world.transit = transit.loaded;
+    visualGuide = createVisualGuide(world, byId('target'), byId('target-name'), byId('target-distance'),
+      byId('target-arrow'), document.querySelector('.guide'), document.querySelector('.assistant'));
+    loaded = true;
+    byId('chat').querySelector('button').disabled = false;
+    render();
+    frameId = requestAnimationFrame(frame);
+  }
 } catch (error) {
+  byId('exit').disabled = !integrated;
   byId('hint').textContent = '3D 장면을 열 수 없습니다. WebGL 2 설정과 모델 파일을 확인하세요.';
   byId('feedback').textContent = error.message;
   console.error(error);

@@ -3,6 +3,9 @@ import { api, currentAccount, element, setAccount } from './online.js';
 export function accountInterface({openDialog,closeDialog,button,menu,start,timeText}) {
   const $=id=>document.getElementById(id);
   let courses;
+  const localTutorial=Boolean(document.querySelector('meta[name="local-tutorial"][content="enabled"]'));
+  const practiceRoute=localTutorial?new URLSearchParams(location.search).get('practice'):null;
+  const preference=practiceRoute==='bus'?'bus':practiceRoute==='rail'?'train':null;
   const catalog=async()=>courses??=await api('courses');
   function showError(error,status) {
     if (error.status===401) {setAccount(null);menu();}
@@ -54,15 +57,21 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
       const {courses:list}=await catalog();
       if (!choices.isConnected) return;
       status.textContent='지하철과 버스 기록은 서로 다른 코스로 저장됩니다.';
+      let preferredOption;
       for(const [id,course] of Object.entries(list)){
         const option=button('',()=>start(id),'course-choice');
         option.append(element('span',course.transport==='bus'?'버스 '+course.busNumber+'번':'지하철 '+course.line+'호선'));
         option.lastChild.className='course-kind';
         option.append(element('strong',course.label));
         option.append(element('small',course.detail));
-        option.append(element('b','선택 →'));
+        if (course.transport===preference) {
+          preferredOption=option;
+          option.setAttribute('data-practice-choice','');
+          option.append(element('b','연습한 코스로 시작 →'));
+        } else option.append(element('b','선택 →'));
         choices.append(option);
       }
+      preferredOption?.focus();
     } catch (error) {if (choices.isConnected) showError(error,status);}
   }
   function listRecords(ranked) {
@@ -136,6 +145,14 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
       '<div id="menu-actions" class="button-row"></div><p id="menu-status" role="status"></p>'+
       '<p class="small-note">방향키 이동 · Shift 달리기 · M 길찾기 · E 상호작용</p></section>';
     const actions=$('menu-actions');
+    if (localTutorial) {
+      const tutorial=element('a','AI 출근 튜토리얼');
+      tutorial.href='/tutorial/';
+      tutorial.className='btn';
+      actions.append(tutorial);
+      if (preference) $('menu-status').textContent=
+        (preference==='bus'?'버스':'지하철')+' 경로가 선택됐습니다. '+(user?'게임 시작에서 코스를 확인하세요.':'본 게임은 로그인 후 시작할 수 있습니다.');
+    }
     if (!user) {
       $('intro-note').textContent='공덕동에서 충정로역 근처 회사까지 출근하세요.';
       actions.append(button('ID 생성',()=>accountForm('signup'),'btn light'),button('로그인',()=>accountForm('login')));

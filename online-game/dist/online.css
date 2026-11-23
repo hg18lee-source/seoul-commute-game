@@ -66,3 +66,5 @@ body.playing .top-right a { display: none; }
 .course-choice small { color:#687971; font-size:12px; line-height:1.5; }
 .course-choice b { align-self:end; color:#17443d; font-size:11px; }
 @media(max-width:560px) { .course-choices { grid-template-columns:1fr; gap:9px; } .course-choice { min-height:112px; padding:13px; } }
+
+.course-choice[data-practice-choice] { outline: 2px solid #6fae91; outline-offset: 2px; }

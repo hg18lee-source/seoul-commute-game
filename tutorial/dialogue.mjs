@@ -8,6 +8,8 @@ export function interpret(request) {
   const route = rail === bus ? null : rail ? 'rail' : 'bus';
   if (/취소|그만둘래/.test(text)) return { cancel: true };
   if (/시작.*(수 있|가능|돼\?|나요)|상태|어디까지|현재 단계/.test(text)) return { name: 'get_tutorial_status' };
+  if (/개찰구.*어디/.test(text)) return { name: 'locate_gate' };
+  if (/어디로|어디 가|뭘 눌러|무엇을 눌러|어떤 키|다시 알려/.test(text)) return { name: 'get_current_guidance' };
   if (/다시 시작|처음부터|초기화/.test(text)) return { name: 'restart_tutorial' };
   if (/나가|종료/.test(text)) return { name: 'exit_tutorial' };
   if (!route && /택시|자가용|자전거|기차|비행기/.test(text) && /시작|선택|연습/.test(text))
@@ -22,7 +24,7 @@ export function interpret(request) {
   return {};
 }
 
-export function createDialogue(tutorial, interpretRequest = interpret) {
+export function createDialogue(tutorial, interpretRequest = interpret, readPosition = () => ({})) {
   let pending = false;
   const clear = () => { pending = false; };
   function send(request) {
@@ -46,7 +48,7 @@ export function createDialogue(tutorial, interpretRequest = interpret) {
       const safeArgs = Object.fromEntries(Object.entries(args).filter(([key, value]) =>
         ['route', 'topic'].includes(key) && ['rail','bus','move','run','interact'].includes(value)));
       return { name: Object.hasOwn(schemasForDisplay, call.name) ? call.name : '허용되지 않은 도구',
-        args: safeArgs, ...tutorial.execute(call.name, args) };
+        args: safeArgs, ...tutorial.execute(call.name, args, readPosition()) };
     } catch {
       return { outcome: 'FAIL', message: '요청을 처리할 수 없습니다. 다시 시도하세요.' };
     }

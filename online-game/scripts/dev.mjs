@@ -4,6 +4,7 @@ import { Readable } from 'node:stream';
 import { makePool } from '../server/db.mjs';
 import { app, configFrom } from '../server/app.mjs';
 
+const tutorial=process.argv.includes('--tutorial') ? await import('../../tutorial/local-http.mjs') : null;
 const pool=makePool(), handle=app(pool,configFrom());
 const port=Number(process.env.PORT??8010), host='127.0.0.1';
 const origin='http://'+host+':'+port;
@@ -23,12 +24,14 @@ const server=createServer(async (req,res)=>{
       else res.end();
       return;
     }
+    if (tutorial&&await tutorial.serveTutorial(req,res,url.pathname)) return;
     const path=url.pathname==='/'?'/index.html':url.pathname;
     const extension=path.split('.').at(-1);
     if (!['GET','HEAD'].includes(req.method)||!Object.hasOwn(mime,extension)||!/^\/(?:[\w-]+\/)*[\w-]+\.[\w.]+$/.test(path)) {
       res.writeHead(404).end();return;
     }
-    const asset=await readFile(new URL('../public-online'+path,import.meta.url));
+    let asset=await readFile(new URL('../public-online'+path,import.meta.url));
+    if (tutorial&&path==='/index.html') asset=tutorial.enableTutorialMenu(asset.toString('utf8'));
     res.writeHead(200,{'Content-Type':mime[extension],'Cache-Control':'no-store'}).end(req.method==='HEAD'?undefined:asset);
   } catch {
     res.writeHead(404).end();

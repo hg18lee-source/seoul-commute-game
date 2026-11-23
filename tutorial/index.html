@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>AI 출근 튜토리얼 · 대중교통 출근 게임</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <canvas id="world" aria-label="3인칭 출근 연습 장면"></canvas>
+  <header class="top">
+    <div class="brand">대중교통 출근 게임 <span>연습 모드</span></div>
+    <div id="transit" role="status" hidden></div>
+  </header>
+  <main class="panels">
+    <section class="card guide" aria-labelledby="heading">
+      <p id="progress" class="eyebrow">AI 출근 튜토리얼</p>
+      <h1 id="heading">출근길을 연습하세요</h1>
+      <p id="hint">장면을 준비하는 중입니다.</p>
+      <div id="routes" class="buttons">
+        <button id="rail" type="button" aria-pressed="false">지하철 5호선</button>
+        <button id="bus" type="button" aria-pressed="false">260번 버스</button>
+      </div>
+      <button id="start" class="primary" type="button" disabled>튜토리얼 시작</button>
+      <button id="continue" class="primary" type="button" hidden>이 경로로 계속</button>
+      <div id="finish" hidden>
+        <button id="official" class="primary" type="button">본 게임 시작</button>
+        <p id="connection" role="status" hidden>본 게임은 로그인이 필요합니다. 이 화면은 본 게임 연결을 위한 안내입니다.</p>
+      </div>
+      <div id="controls" class="keys" aria-label="조작">
+        <span data-topic="move"><kbd>↑ ↓ ← →</kbd> 이동</span>
+        <span data-topic="run"><kbd>Shift</kbd> 달리기</span>
+        <span data-topic="interact"><kbd>E</kbd> 상호작용</span>
+      </div>
+      <p id="feedback" role="status" class="feedback"></p>
+      <div id="actions" class="buttons">
+        <button id="skip" type="button" disabled>건너뛰기</button>
+        <button id="restart" type="button" disabled>처음부터</button>
+        <button id="exit" type="button" disabled>나가기</button>
+      </div>
+      <details class="goals">
+        <summary>완료한 목표 <span id="count">0</span></summary>
+        <ul id="goals"></ul>
+      </details>
+    </section>
+    <section class="card assistant" aria-labelledby="assistant-title">
+      <h2 id="assistant-title">AI 도우미</h2>
+      <p class="eyebrow">AI 연동 전 기능 시연</p>
+      <div id="conversation" role="log" aria-label="대화">
+        <p class="reply">“어떻게 걸어?” 또는 “버스 연습 시작해줘”라고 입력해 보세요.</p>
+      </div>
+      <form id="chat">
+        <label class="sr-only" for="message">도우미에게 묻기</label>
+        <input id="message" type="text" maxlength="160" placeholder="현재 단계 알려줘" autocomplete="off" required>
+        <button type="submit" disabled>보내기</button>
+      </form>
+      <details>
+        <summary>기능 호출 보기</summary>
+        <p class="muted">현재 탭에 표시되는 시연 내역입니다.</p>
+        <ol id="calls"></ol>
+      </details>
+    </section>
+  </main>
+</body>
+</html>

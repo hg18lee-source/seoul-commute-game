@@ -4,7 +4,8 @@ import { after, before, test } from 'node:test';
 import { app } from '../server/app.mjs';
 import { digest, passwords } from '../server/auth.mjs';
 import { makePool } from '../server/db.mjs';
-import { initialState } from '../server/rules.mjs';
+import { initialState, officialRules, previousRules } from '../server/rules.mjs';
+import { BUS_COURSE, RIGHT_EXIT_RULES } from '../dist/journey.js';
 import { migrate } from '../scripts/migrate.mjs';
 import { journey } from './journey.mjs';
 
@@ -23,7 +24,7 @@ const setClock=value=>{now=value;};
 beginning();
 const config={pepper,secure:true,seoulKey:'mock_seoul_key_dedicated',busKey:'mock_bus_key_dedicated',days:30,
   cronSecret:randomBytes(24).toString('hex')};
-const handler=app(pool,config,{clock:()=>now,fetcher:async url=>{
+const handler=app(pool,config,{clock:()=>now,scheduleCompletion:work=>work,fetcher:async url=>{
   fetchCount++;
   assert.equal(typeof url,'string');
   if (breakUpstream) return new Response('upstream failure',{status:503});
@@ -35,7 +36,7 @@ const handler=app(pool,config,{clock:()=>now,fetcher:async url=>{
   return new Response('<response><headerCd>0</headerCd>'+xml+'</response>');
 }});
 
-function browser(initial) {
+function browser(initial, handle=handler) {
   let cookie=initial?.cookie, csrf=initial?.csrf;
   const call=async (path,data,options={})=>{
     const headers=new Headers(options.headers);
@@ -46,7 +47,7 @@ function browser(initial) {
       if (csrf&&options.csrf!==false) headers.set('x-csrf-token',csrf);
     }
     const url=origin+(path==='/administrator'?path:'/api/'+path);
-    const response=await handler(new Request(url,{method:data===undefined?'GET':'POST',headers,
+    const response=await handle(new Request(url,{method:data===undefined?'GET':'POST',headers,
       body:data===undefined?undefined:JSON.stringify(data)}));
     const body=response.headers.get('content-type')?.includes('json')?await response.json():await response.text();
     const issued=response.headers.get('set-cookie');
@@ -182,8 +183,20 @@ test('wrong owner, wrong session, teleports, paused movement, timeouts, and canc
 
 test('validated fixed completion journey, tied ranks, retry, and durable own history',async()=>{
   await journey(alpha,setClock,beginning(),routes.rail,{collisions:true,cancelAfterCollisions:true});
+  const userId=(await alpha('session')).body.user.id;
+  const older=[
+    [randomUUID(),routes.rail,RIGHT_EXIT_RULES],
+    [randomUUID(),BUS_COURSE.id,previousRules],
+  ];
+  for (const [id,course,version] of older) {
+    await pool.query('INSERT INTO commute_records(play_id,user_id,course,rules,tenths,finished_at) VALUES($1,$2,$3,$4,1,$5)',
+      [id,userId,course,version,new Date(now-1000)]);
+    const empty=await alpha('ranking?course='+course+'&rules='+version);
+    assert.equal(empty.status,200);
+    assert.deepEqual(empty.body.rows,[]);
+  }
   const first=await journey(alpha,setClock,beginning(),routes.rail,{pause:true});
-  assert.equal(first.result.body.best,null);
+  assert.equal(first.result.body.best,first.result.body.tenths);
   const duplicate=await alpha('play-finish',{id:first.id,seq:first.seq,wall:first.wall,events:[]});
   assert.deepEqual([duplicate.status,duplicate.body.error],[409,'play_closed']);
   await journey(beta,setClock,beginning(),routes.rail);
@@ -192,14 +205,24 @@ test('validated fixed completion journey, tied ranks, retry, and durable own his
   const rail=(await alpha('ranking?course='+routes.rail)).body.rows;
   assert.deepEqual(rail.map(row=>row.rank),[1,1]);
   assert.equal(rail.filter(row=>row.mine).length,1);
+  assert.equal(rail[0].tenths,first.result.body.tenths);
+  const bus=await journey(alpha,setClock,beginning(),BUS_COURSE.id);
+  assert.equal(bus.result.body.best,bus.result.body.tenths);
+  const busRanking=(await alpha('ranking?course='+BUS_COURSE.id)).body.rows;
+  assert.deepEqual(busRanking,[{nickname:'첫출근',tenths:bus.result.body.tenths,rank:1,mine:true}]);
   const anotherBrowser=browser();
   await anotherBrowser('login',{nickname:'첫출근',password:testPin});
   const own=(await anotherBrowser('records?user='+((await beta('session')).body.user.id))).body.rows;
-  assert.equal(own.length,2);
-  assert.ok(own.every(row=>row.course===routes.rail));
+  assert.equal(own.length,5);
+  assert.deepEqual(own.filter(row=>row.previousVersion).map(row=>row.play_id).sort(),
+    older.map(([id])=>id).sort());
+  for (const [id,course,version] of older) {
+    const stored=(await pool.query('SELECT course,rules,tenths FROM commute_records WHERE play_id=$1',[id])).rows;
+    assert.deepEqual(stored,[{course,rules:version,tenths:1}]);
+  }
   const afterRestart=app(pool,config);
   const reloaded=await afterRestart(new Request(origin+'/api/records',{headers:{cookie:anotherBrowser.cookies().cookie}}));
-  assert.equal((await reloaded.json()).rows.length,2);
+  assert.equal((await reloaded.json()).rows.length,5);
 });
 
 test('logged API results, cross-request cache, external calls and sanitized admin detail',async()=>{
@@ -256,4 +279,154 @@ test('Vercel rewrite dispatch and database outage keep error metadata safe',asyn
       reason:'service_error'}]);
     assert.equal(JSON.stringify(log).includes(errorPayload),false);
   } finally {console.error=original;}
+});
+
+test('daily completion refresh follows committed records, KST, authorization and recovery',async()=>{
+  const date='2001-02-03';
+  const start=Date.parse(date+'T00:00:00+09:00'), end=start+86400000;
+  const overview=async()=> {
+    const result=await admin('admin-completions');
+    assert.equal(result.status,200);
+    assert.equal(result.body.date,date);
+    return result.body;
+  };
+  const userId=(await alpha('session')).body.user.id;
+  async function fixture(course,rules,tenths,finished) {
+    const id=randomUUID();
+    await pool.query('INSERT INTO commute_records(play_id,user_id,course,rules,tenths,finished_at) VALUES($1,$2,$3,$4,$5,$6)',
+      [id,userId,course,rules,tenths,new Date(finished)]);
+    return id;
+  }
+  async function reconcile(expected) {
+    const dash=await overview();
+    const {rows}=await pool.query('SELECT play_id,course,rules,tenths,finished_at FROM commute_records');
+    const source=rows.filter(r=>r.rules===officialRules[r.course]&&r.finished_at>=start&&r.finished_at<end);
+    assert.equal(dash.count,source.length);
+    assert.equal(dash.count,expected);
+    for (const course of dash.byCourse) {
+      const qualifying=source.filter(row=>row.course===course.course).sort((a,b)=>
+        a.tenths-b.tenths||a.finished_at-b.finished_at||a.play_id.localeCompare(b.play_id));
+      assert.equal(course.rules,officialRules[course.course]);
+      assert.equal(course.count,qualifying.length);
+      assert.deepEqual(course.fastest,qualifying.length?{playId:qualifying[0].play_id,tenths:qualifying[0].tenths}:null);
+    }
+    return dash;
+  }
+
+  for (const endpoint of ['admin-completions','admin-completion-evidence','admin-completion-runs']) {
+    assert.equal((await alpha(endpoint)).status,403);
+    assert.equal((await browser()(endpoint)).status,401);
+  }
+  assert.equal((await alpha('admin-completion-recalculate',{})).status,403);
+  assert.equal((await admin('admin-completion-recalculate',{},{csrf:false})).status,403);
+  assert.equal((await admin('admin-completion-evidence?date=2026-02-30')).status,400);
+  now=start;
+  await fixture(routes.rail,RIGHT_EXIT_RULES,1,start);
+  await fixture(routes.rail,officialRules[routes.rail],1,start-1);
+  await fixture(BUS_COURSE.id,officialRules[BUS_COURSE.id],1,end);
+  await browser()('tutorial-access');
+  const invalid=await alpha('play-start',{course:routes.rail});
+  const rejected=await alpha('play-finish',{id:invalid.body.id,seq:1,wall:0,
+    events:[{kind:'sample',wall:0,after:initialState().point}]});
+  assert.equal(rejected.status,422);
+  const cancelled=await alpha('play-start',{course:routes.rail});
+  assert.equal((await alpha('play-cancel',{id:cancelled.body.id})).status,200);
+  await reconcile(0);
+
+  const slow=await journey(alpha,setClock,now,routes.rail,{secondRecord:true});
+  const afterFirst=await reconcile(1);
+  assert.deepEqual(afterFirst.byCourse.find(row=>row.course===routes.rail).fastest,{playId:slow.id,tenths:840});
+  assert.ok(afterFirst.runId&&afterFirst.lastSuccessAt&&afterFirst.matchesLastRun);
+  const retries=await Promise.all([1,2].map(()=>alpha('play-finish',{id:slow.id,seq:slow.seq,wall:slow.wall,events:[]})));
+  assert.ok(retries.every(r=>r.status===409));
+  assert.equal((await reconcile(1)).runId,afterFirst.runId);
+
+  const raceStart=start+300000;
+  const finishTogether=Promise.withResolvers();
+  let finishers=0;
+  const concurrentJourney=(account,course)=>{
+    let time=raceStart;
+    const client=browser(account.cookies(),app(pool,config,{clock:()=>time,scheduleCompletion:work=>work}));
+    const raceClient=async (action,...args)=>{
+      if (action==='play-finish') {
+        if (++finishers===2) finishTogether.resolve();
+        await finishTogether.promise;
+      }
+      return client(action,...args);
+    };
+    return journey(raceClient,value=>{time=value;},raceStart,course);
+  };
+  const [fast,bus]=await Promise.all([concurrentJourney(alpha,routes.rail),concurrentJourney(beta,BUS_COURSE.id)]);
+  now=start+600000;
+  const afterRace=await reconcile(3);
+  assert.deepEqual(afterRace.byCourse.find(row=>row.course===routes.rail).fastest,{playId:fast.id,tenths:830});
+  assert.equal(afterRace.byCourse.find(row=>row.course===BUS_COURSE.id).fastest.playId,bus.id);
+  const slower=await journey(alpha,setClock,now,routes.rail,{secondRecord:true});
+  assert.equal((await reconcile(4)).byCourse.find(row=>row.course===routes.rail).fastest.playId,fast.id);
+
+  const lock=await pool.connect();
+  let duringFailure;
+  try {
+    await lock.query("SELECT pg_advisory_lock(624023082, $1::date - DATE '2000-01-01')",[date]);
+    let scheduled, settled=false;
+    const independent=browser(alpha.cookies(),app(pool,config,{clock:()=>now,scheduleCompletion:work=>{
+      scheduled=work.finally(()=>{settled=true;});
+    }}));
+    duringFailure=await journey(independent,setClock,now,routes.rail,{secondRecord:true});
+    assert.ok(scheduled);
+    assert.equal(settled,false,'official finish does not wait for the aggregate lock');
+    const stillSaved=await reconcile(5);
+    assert.equal(stillSaved.matchesLastRun,false);
+    await scheduled;
+    assert.equal((await admin('admin-completion-recalculate',{})).status,503);
+  } finally {
+    try {await lock.query('SELECT pg_advisory_unlock_all()');} finally {lock.release();}
+  }
+  const recovered=await admin('admin-completion-recalculate',{});
+  assert.equal(recovered.status,200);
+  assert.equal(recovered.body.status,'success');
+  assert.equal((await reconcile(5)).runId,recovered.body.runId);
+  const unchanged=await admin('admin-completion-recalculate',{});
+  assert.equal(unchanged.body.status,'unchanged');
+
+  const runs=(await admin('admin-completion-runs')).body.rows;
+  const failed=runs.find(row=>row.play_id===duringFailure.id);
+  assert.equal(failed.status,'failed');
+  assert.equal(failed.reason,'aggregate_error');
+  assert.equal(failed.request_id,duringFailure.result.id);
+  assert.equal((await admin('admin-detail?id='+failed.request_id)).body.request.outcome,'ALLOW');
+  assert.equal(runs.find(row=>row.id===recovered.body.runId).request_id,recovered.id);
+  assert.equal(runs.find(row=>row.id===afterFirst.runId).play_id,slow.id);
+  assert.ok(runs.some(row=>row.cause==='admin_recalculate'&&row.status==='failed'&&row.reason==='aggregate_error'));
+  assert.ok(runs.every(row=>row.id&&row.started_at&&row.ended_at&&row.target_date===date));
+  for (const secret of [adminPassword,alpha.cookies().cookie,uri,pepper]) {
+    assert.equal(JSON.stringify(runs).includes(secret),false);
+  }
+  assert.equal((await admin('admin-completion-runs')).body.rows.length,runs.length);
+  const evidence=(await admin('admin-completion-evidence')).body.rows;
+  assert.deepEqual(evidence.map(row=>row.play_id).sort(),[slow.id,fast.id,bus.id,slower.id,duringFailure.id].sort());
+  assert.deepEqual(evidence.filter(row=>row.fastest).map(row=>row.play_id).sort(),[fast.id,bus.id].sort());
+
+  const boundaryId=await fixture(routes.rail,officialRules[routes.rail],1,start);
+  const beforeMidnight=await fixture(BUS_COURSE.id,officialRules[BUS_COURSE.id],1,end-1);
+  const fillers=await Promise.all(Array.from({length:20},()=>fixture(routes.rail,officialRules[routes.rail],1000,start+500)));
+  now=end-1;
+  assert.equal((await reconcile(27)).byCourse.find(row=>row.course===BUS_COURSE.id).fastest.playId,beforeMidnight);
+  const pageOne=(await admin('admin-completion-evidence')).body;
+  assert.ok(pageOne.nextCursor);
+  await fixture(routes.rail,officialRules[routes.rail],1000,end-2);
+  now=end;
+  const pageTwo=(await admin('admin-completion-evidence?'+new URLSearchParams({date,before:pageOne.nextCursor}))).body;
+  assert.equal(pageTwo.nextCursor,null);
+  assert.deepEqual([...pageOne.rows,...pageTwo.rows].map(row=>row.play_id).sort(),
+    [...evidence.map(row=>row.play_id),boundaryId,beforeMidnight,...fillers].sort());
+  const nextDay=(await admin('admin-completions')).body;
+  assert.equal(nextDay.date,'2001-02-04');
+  assert.equal(nextDay.count,1);
+  assert.equal(nextDay.byCourse.find(row=>row.course===routes.rail).fastest,null);
+  now=end+86400000;
+  const emptyDay=(await admin('admin-completions')).body;
+  assert.equal(emptyDay.count,0);
+  assert.equal(emptyDay.lastSuccessAt,null);
+  assert.ok(emptyDay.byCourse.every(row=>row.fastest===null));
 });

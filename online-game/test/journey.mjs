@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { initialState } from '../server/rules.mjs';
-import { BUS_COURSE, COURSE, RIGHT_EXIT_RULES, RIGHT_EXIT_PATH } from '../dist/journey.js';
+import { BUS_COURSE, COURSE, CONNECTED_ENTRANCE_RULES, RIGHT_EXIT_RULES, RIGHT_EXIT_PATH, STATION_ENTRANCE } from '../dist/journey.js';
 
 export async function journey(client,setTime,start,course,{pause=false, secondRecord=false, collisions=false, cancelAfterCollisions=false}={}) {
-  const {body:{id},status}=await client('play-start',{course,exitRules:RIGHT_EXIT_RULES});
+  const {body:{id},status}=await client('play-start',{course,exitRules:RIGHT_EXIT_RULES,entranceRules:CONNECTED_ENTRANCE_RULES});
   assert.equal(status,201);
   let seq=0, point=initialState(course).point, elapsed=0, paused=0;
   const wall=()=>Math.round((elapsed+paused)*1000);
@@ -42,7 +42,14 @@ export async function journey(client,setTime,start,course,{pause=false, secondRe
 
   await batch();
   if (course===COURSE.id) {
-    await tick(9.1,-4.2,-32.1);
+    const {entry,descentEnd,turn,exit}=STATION_ENTRANCE;
+    await tick(7.1,entry.x,entry.z-.08);
+    await stage({stage:'entrance'});
+    await tick(9.2,entry.x,descentEnd-.08);
+    await stage({stage:'entrance-corridor'});
+    await tick(9.6,entry.x,turn.z);
+    await tick(10.6,turn.x,turn.z);
+    await tick(12.1,exit.x,exit.z-.08);
     if (collisions) { await penalty(5); await penalty(10); }
     if (cancelAfterCollisions) {
       const result=await client('play-cancel',{id});
@@ -50,9 +57,9 @@ export async function journey(client,setTime,start,course,{pause=false, secondRe
       return {result,id,point};
     }
     await stage({stage:'hall',x:0,z:14});
-    await tick(12.1,0,2);
+    await tick(15.1,0,2);
     await stage({stage:'platform',x:0,z:8});
-    await tick(17.3,4.45,0);
+    await tick(20.3,4.45,0);
     await board('train',1);
     if (pause) {
       await batch('play-progress','pause');
@@ -61,18 +68,18 @@ export async function journey(client,setTime,start,course,{pause=false, secondRe
       paused+=3;
       await batch('play-progress','resume');
     }
-    await tick(29.3,0,-11);
+    await tick(32.3,0,-11);
     await vehicle({index:2,open:true});
-    await tick(35.3);
+    await tick(38.3);
     await vehicle({open:false});
-    await tick(47.3,0,4);
+    await tick(50.3,0,4);
     await vehicle({index:COURSE.destinationIndex,open:true});
-    await tick(53,0,-11);
+    await tick(56,0,-11);
     await stage({stage:'platform',station:COURSE.destination,x:0,z:8,ride:null});
-    await tick(54.3,RIGHT_EXIT_PATH[1].x,RIGHT_EXIT_PATH[1].z);
-    await tick(60,RIGHT_EXIT_PATH[2].x,RIGHT_EXIT_PATH[2].z);
+    await tick(57.3,RIGHT_EXIT_PATH[1].x,RIGHT_EXIT_PATH[1].z);
+    await tick(63,RIGHT_EXIT_PATH[2].x,RIGHT_EXIT_PATH[2].z);
     await stage({stage:'exit-hall',x:0,z:14});
-    await tick(68,0,2);
+    await tick(71,0,2);
     await stage({stage:'exit-street',x:0,z:34});
   } else if(course===BUS_COURSE.id) {
     await tick(13,7,-42);

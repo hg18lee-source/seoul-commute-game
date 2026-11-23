@@ -1,13 +1,17 @@
+import { STATION_ENTRANCE } from '../dist/journey.js';
 import { describeTarget } from './guidance.mjs';
 
 export const routes = Object.freeze({ rail: '지하철 5호선', bus: '260번 버스' });
+const {entry,landing,turn,exit}=STATION_ENTRANCE;
 export const steps = Object.freeze({
   walk: { title: '방향키로 이동', hint: '↑를 눌러 앞의 초록 표시까지 걸어가세요.', topic: 'move', point: [0, 5] },
   skills: { title: '대각선과 달리기', hint: '방향키 두 개로 대각선 이동하고, Shift와 방향키를 함께 눌러 달려보세요.', topic: 'run' },
   interact: { title: '표시에서 상호작용', hint: '표시 근처에서 E를 눌러 안내를 확인하세요.', topic: 'interact', point: [0, 1] },
   choose: { title: '연습 경로 확인', hint: '선택한 경로를 확인하고 이동하세요.' },
-  entranceApproach: { title: '공덕역 계단 입구', hint: '입구 오른쪽 통로 표시로 이동하세요.', topic: 'rail', point: [-4, -21] },
-  entrance: { title: '공덕역 입구', hint: '오른쪽 통로를 따라 계단 아래 표시까지 걸으세요.', topic: 'rail', point: [-4, -32.1] },
+  entranceApproach: { title: '공덕역 계단 입구', hint: '입구 오른쪽 통로 표시로 이동하세요.', topic: 'rail', point: [entry.x, entry.z+1.19] },
+  entrance: { title: '오른쪽 계단 내려가기', hint: '계단 아래 표시까지 내려가세요.', topic: 'rail', point: [landing.x, landing.z] },
+  entranceTurn: { title: '대합실로 이동', hint: '바닥 화살표를 따라 우측 통로로 이동하세요.', topic: 'rail', point: [turn.x, turn.z] },
+  entranceExit: { title: '대합실로 이동', hint: '모서리를 돌아 통로 안쪽 표시까지 걸으세요.', topic: 'rail', point: [exit.x, exit.z-.35] },
   gate: { title: '교통카드 찍기', hint: '개찰구 근처에서 E를 눌러 문을 여세요.', topic: 'interact', point: [0, 4.69] },
   pass: { title: '개찰구 통과', hint: '문이 열리면 중앙에서 ↑를 눌러 통과하세요.', topic: 'rail', point: [0, 1.6] },
   platform: { title: '승강장 방향 확인', hint: '오른쪽 애오개·충정로 방면을 선택하세요. 왼쪽은 마포 방면입니다.', topic: 'rail', point: [2.7, 1.5] },
@@ -23,7 +27,7 @@ export const steps = Object.freeze({
 
 const sequence = {
   walk: 'skills', skills: 'interact', interact: 'choose',
-  entranceApproach: 'entrance', entrance: 'gate', gate: 'pass', pass: 'platform', platform: 'railBoard',
+  entranceApproach: 'entrance', entrance: 'entranceTurn', entranceTurn: 'entranceExit', entranceExit: 'gate', gate: 'pass', pass: 'platform', platform: 'railBoard',
   railBoard: 'railRide', railRide: 'railExit', railExit: 'complete',
   busStop: 'busBoard', busBoard: 'bell', bell: 'busRide',
   busRide: 'busExit', busExit: 'complete',
@@ -125,7 +129,7 @@ export function createTutorial() {
         if (input.interact && target.ready) advance();
         break;
       case 'choose': if (input.confirmRoute) advance(); break;
-      case 'entranceApproach': case 'entrance': if (target.ready) advance(); break;
+      case 'entranceApproach': case 'entrance': case 'entranceTurn': case 'entranceExit': if (target.ready) advance(); break;
       case 'pass': if (target.ready && input.z <= 2.05 && Math.abs(input.x) <= .44) advance(); break;
       case 'platform': if (target.ready) advance(); break;
       case 'railBoard': if (target.ready && input.right) advance(); break;

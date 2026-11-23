@@ -1,9 +1,9 @@
 import * as THREE from './vendor/three.module.js';
 import { CommuterMotion } from "./hero/motion.js";
 import { createNpc, moveNpc } from './hero/npc.js';
-import { entranceHeight, entranceBlocked, gateZ, placeGate } from './transit-scene.js';
+import { entranceHeight, entranceBlocked, entranceStringer, gateZ, placeGate } from './transit-scene.js';
 import { populateGongdeok } from "./gongdeok-street.js";
-import { BUS_COURSE, CHECKPOINTS, COURSE, RIGHT_EXIT_PATH, RIGHT_STATION_EXIT } from './journey.js';
+import { BUS_COURSE, CHECKPOINTS, COURSE, RIGHT_EXIT_PATH, RIGHT_STATION_EXIT, STATION_ENTRANCE, atEntranceEntry, entranceWalkable, insideEntranceFloor } from './journey.js';
 
 const C={pavement:0xd8d2bb,road:0x7d8881,cream:0xe8e5ce,ink:0x294b43,green:0x527f56,glass:0x628183,wood:0x9c7953};
 const mats=new Map();
@@ -21,14 +21,92 @@ export class World{
  clear(){this.scene.remove(this.root);const npcMaterials=new Set(),npcSkeletons=new Set();this.root.traverse(o=>{if(o.isInstancedMesh)o.dispose();if(o.geometry&&!o.userData.sharedGeometry)o.geometry.dispose();if(o.isSkinnedMesh&&o.skeleton)npcSkeletons.add(o.skeleton);for(const material of Array.isArray(o.material)?o.material:[o.material])if(material?.userData.npcOwned)npcMaterials.add(material);});for(const skeleton of npcSkeletons)skeleton.dispose();for(const material of npcMaterials)material.dispose();this.root=new THREE.Group();this.scene.add(this.root);this.npcs=[];this.spots=[];this.portal=null;this.vehicleRoot=null;this.streetBus=null;this.platformTrains=[];this.cityMotion=[];this.gate=null;this.traffic=null;}
  floor(w,d,color=C.pavement){cube(this.root,w,.2,d,color,0,-.12,0);}
  spot(id,label,x,z,meta={}){const marked=meta.boarding||meta.alighting,ring=new THREE.Mesh(new THREE.RingGeometry(marked?1.05:.62,marked?1.28:.72,40),new THREE.MeshBasicMaterial({color:marked?0xffd334:0xa6e5b0,transparent:true,opacity:.95,side:THREE.DoubleSide}));ring.rotation.x=-Math.PI/2;ring.position.set(x,marked&&this.mode==='platform'?.335:.025,z);this.root.add(ring);const spot={id,label,x,z,ring,...meta};this.spots.push(spot);if(marked){const height=this.mode==='platform'?1.65:.75,y=height/2+.04,text=meta.boarding?'탑승 위치':this.mode==='vehicle'?'하차 위치':'하차 후 전진';sign(this.root,text,2.8,.64,x,this.mode==='platform'?2.75:1.9,z-1.15,'#e6b820','#172f2b');const beacon=cylinder(this.root,.09,height,0xffd334,x,y,z-.72,12);beacon.material=mat(0xffd334,{emissive:0xffb900,emissiveIntensity:1.8,roughness:.35});spot.beacon=beacon;}return spot;}
- people(count,area={x:7,z:45,offset:0}){for(let i=0;i<count;i++){const npc=createNpc(this.heroModel,i),x=Math.sin(i*9.27)*area.x,z=(i/count-.5)*area.z+area.offset,spacing=area.z/count,roam=Math.min(7.8,spacing*.38*(area.roamMultiplier??1));npc.g.position.set(x,0,z);npc.baseX=x;npc.baseZ=z;npc.minZ=Math.max(area.offset-area.z/2,z-roam);npc.maxZ=Math.min(area.offset+area.z/2,z+roam);this.root.add(npc.g);this.npcs.push(npc);}}
- setStage(mode,data={}){this.clear();this.mode=mode;this.intro=!!data.intro;this.scene.background.set(mode==='hall'||mode==='exit-hall'||mode==='platform'?0xd2d7c7:0xdbe5d7);this.scene.fog.color.copy(this.scene.background);this.hero.visible=true;this.hero.rotation.y=0;this.desiredYaw=0;this.heroAnimator.reset();if(mode==='street'){if(data.legacyStreet)this.street(data);else populateGongdeok(this);}if(mode==='hall'||mode==='exit-hall')this.hall(data);if(mode==='platform')this.platform(data);if(mode==='vehicle')this.vehicle(data);if(mode==='office'||mode==='exit-street')this.office(data);this.hero.position.set(data.spawnX??0,mode==='platform'?.3:0,data.spawnZ??(mode==='street'?22:mode==='hall'||mode==='exit-hall'?14:mode==='platform'?8:mode==='vehicle'?5:22));this.camera.position.copy(this.hero.position).add(new THREE.Vector3(0,5.3,9));this.camera.lookAt(this.hero.position.x,1,this.hero.position.z-3);}
+ people(count,area={x:7,z:45,offset:0}){for(let i=0;i<count;i++){const npc=createNpc(this.heroModel,i),x=Math.sin(i*9.27)*area.x,z=(i/count-.5)*area.z+area.offset,spacing=area.z/count,roam=Math.min(7.8,spacing*.38*(area.roamMultiplier??1));const safeX=this.mode==='street'&&this.connectedEntrance&&this.npcBlocked(x,z)?STATION_ENTRANCE.opening.left-.55:x;npc.g.position.set(safeX,0,z);npc.baseX=safeX;npc.baseZ=z;npc.minZ=Math.max(area.offset-area.z/2,z-roam);npc.maxZ=Math.min(area.offset+area.z/2,z+roam);this.root.add(npc.g);this.npcs.push(npc);}}
+ setStage(mode,data={}){this.clear();this.mode=mode;this.intro=!!data.intro;this.connectedEntrance=Boolean(mode==='street'&&data.connectedEntrance&&this.transit.entrance&&!this.busOnly);this.entranceActive=false;this.cameraTurn=0;this.arrivalCamera=Boolean(data.fromEntrance);this.scene.background.set(mode==='hall'||mode==='exit-hall'||mode==='platform'?0xd2d7c7:0xdbe5d7);this.scene.fog.color.copy(this.scene.background);this.hero.visible=true;this.hero.rotation.y=0;this.desiredYaw=0;this.heroAnimator.reset();if(mode==='street'){if(data.legacyStreet)this.street(data);else populateGongdeok(this);if(this.connectedEntrance)this.buildEntranceConnection();}if(mode==='hall'||mode==='exit-hall')this.hall(data);if(mode==='platform')this.platform(data);if(mode==='vehicle')this.vehicle(data);if(mode==='office'||mode==='exit-street')this.office(data);this.hero.position.set(data.spawnX??0,mode==='platform'?.3:0,data.spawnZ??(mode==='street'?22:mode==='hall'||mode==='exit-hall'?14:mode==='platform'?8:mode==='vehicle'?5:22));this.camera.position.copy(this.hero.position).add(new THREE.Vector3(0,data.fromEntrance?2.45:5.3,data.fromEntrance?3.45:9));this.camera.lookAt(this.hero.position.x,1,this.hero.position.z-3);}
  street(data){this.floor(250,260,0xb8c2a5);cube(this.root,22,.16,150,C.pavement,0,-.01,-15);cube(this.root,17,.1,160,C.road,20,-.03,-15);for(let i=0;i<30;i++){cube(this.root,22,.015,.035,0xb8bca9,0,.08,38-i*4);cube(this.root,.35,.02,2.7,0xe9d6a2,5,.085,38-i*4);}for(let i=0;i<18;i++){cube(this.root,.12,.025,3.5,0xe5dba6,19,.04,35-i*8);cube(this.root,.12,.025,3.5,0xe5dba6,20,.04,35-i*8);}for(const side of [-1,1])for(let i=0;i<11;i++){const z=28-i*15,w=8+(i%3)*2,h=8+(i*7%5)*5,x=side<0?-19:39;const color=[0xc3c6b4,0xd8d2be,0xb8c8c0,0xd2c8b4,0xacbbb3][i%5];cube(this.root,w,h,12,color,x,h/2,z);cube(this.root,w+.3,.25,12.3,0x9baa9d,x,h,z);for(let yy=3;yy<h-1;yy+=3)for(let xx=-w/2+1;xx<w/2;xx+=2)cube(this.root,1.1,1.8,.08,C.glass,x+xx,yy,z+6.05,{metalness:.2,roughness:.4});if(side<0&&i<6){const names=['서울커피','오늘의 빵','편의점','아침식당','책방 공덕','꽃, 오늘'];sign(this.root,names[i],7.5,.85,x,2.7,z+6.16,i%2?'#4a695c':'#8b765b');cube(this.root,7.5,2.3,.1,0x798a7d,x,1.3,z+6.1);}}for(let i=0;i<8;i++){tree(this.root,9,23-i*14);cylinder(this.root,.065,5.5,C.ink,12,2.75,23-i*14);cube(this.root,1.6,.12,.35,C.ink,11.3,5.5,23-i*14);}bench(this.root,-8,-2);bench(this.root,8,-29);this.stationEntrance(data.station||'공덕',data.line||'5');this.streetBus=this.busModel(12,-42);this.busShelter(8,-42);this.spot('station','역으로 들어가기',-5,-24);this.spot('bus','버스 정류장에서 기다리기',7,-42);this.bounds={minX:-10,maxX:10,minZ:-48,maxZ:32};this.people(14,{x:7,z:76,offset:-5,roamMultiplier:3});const distant=cube(this.root,2,27,2,0xb4c3ba,-2,13.5,-110);cylinder(this.root,.35,10,0x8ea899,-2,32,-110);sign(this.root,'서울의 아침',4,1,-5,2.3,26,'#527260');}
  stationEntrance(name,line){cube(this.root,5.8,2.7,4.5,0xb8beb0,-5,1.25,-26);cube(this.root,4.9,2.3,.12,0x3e5648,-5,1.12,-23.7);for(const s of [-1,1])cube(this.root,.28,3,4.8,0xe2ddc8,-5+s*2.8,1.5,-25.6);cube(this.root,6.3,.25,5,0x9ca79b,-5,2.9,-25.8);sign(this.root,`${line}   ${name}역  ↙`,5.6,.75,-5,2.65,-23.3,'#31594e');for(let i=0;i<6;i++)cube(this.root,4.3,.1,1.3,0x8a9686,-5,.07-i*.05,-23.9-i*.15);}
  busShelter(x,z){cube(this.root,3.4,.15,5.8,C.ink,x,3,z);for(const s of [-1,1])cube(this.root,.1,3,.1,C.ink,x+s*1.5,1.5,z+2.5);cube(this.root,3,2,.08,0x9bad99,x,1.65,z-2.5);sign(this.root,'BUS   7016',2.8,.6,x,2.5,z+2.6,'#3b684c');bench(this.root,x,z-1.5);cylinder(this.root,.08,3.4,C.ink,x-2,1.7,z+1);sign(this.root,'7016  광화문 방면',2.2,.8,x-2,2.6,z+1,'#edf0d8','#3b5c43');}
  busModel(x,z){const g=new THREE.Group();this.root.add(g);g.position.set(x,0,z);cube(g,2.7,2.7,9,0x5e9955,0,1.7,0);cube(g,2.6,.28,8.8,0xe8ead7,0,3.12,0);cube(g,2.45,1.13,.08,0x2c4743,0,2.2,4.55);sign(g,'7016',1.6,.45,0,2.94,4.61,'#263d33','#cbef9f');for(const s of [-1,1])for(let i=0;i<5;i++)cube(g,.06,1,1.05,0x2e4c46,s*1.37,2.27,3-i*1.45);for(const s of [-1,1])for(const zz of [-2.8,2.8]){const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.48,.48,.25,12),mat(0x26362e));wheel.rotation.z=Math.PI/2;wheel.position.set(s*1.38,.5,zz);g.add(wheel);}for(const s of [-1,1])cube(g,.4,.16,.1,0xf1e8ba,s*.8,1.1,4.6);return g;}
+ buildEntranceConnection(){
+  const e=STATION_ENTRANCE, o=e.opening, y=e.landing.y;
+  const root=new THREE.Group();
+  root.name='공덕역 대합실 연결 통로';
+  this.root.add(root);
+  const slab=(x0,x1,z0,z1,y0,y1,color)=>cube(root,x1-x0,y1-y0,z1-z0,color,
+    (x0+x1)/2,(y0+y1)/2,(z0+z1)/2);
+  const stone=0xa69e91, floor=0x88847a, ceiling=0xb9b3a9, trim=0x565751, width=.22;
+  const panels=[
+    [o.left,o.right,e.bend,e.shaftEnd],
+    [o.right,e.corridorRight,e.bend,e.sideOpening],
+    [e.corridorLeft,e.corridorRight,e.end,e.bend],
+  ];
+  for(const [x0,x1,z0,z1] of panels) slab(x0,x1,z0,z1,y-.24,y,floor);
+  const walls=[
+    [o.left-width,o.left,e.bend,o.front], [o.right,o.right+width,e.sideOpening,o.front],
+    [o.left-width,e.corridorLeft,e.bend-width,e.bend],
+    [o.right,e.corridorRight+width,e.sideOpening,e.sideOpening+width],
+    [e.corridorRight,e.corridorRight+width,e.end,e.sideOpening+width],
+    [e.corridorLeft-width,e.corridorLeft,e.end,e.bend],
+    [e.corridorLeft-width,e.corridorRight+width,e.end-width,e.end],
+  ];
+  for(const [x0,x1,z0,z1] of walls){
+    const touchesStreet=z1===o.front;
+    slab(x0,x1,z0,z1,y,touchesStreet?0:e.ceiling+.22,stone);
+    if(!touchesStreet) slab(x0,x1,z0,z1,y,y+.13,trim);
+  }
+  const roof=[
+    [o.left,o.right,e.bend,o.back],
+    [o.right,e.corridorRight,e.bend,e.sideOpening],
+    [e.corridorLeft,e.corridorRight,e.end,e.bend],
+  ];
+  for(const [x0,x1,z0,z1] of roof) slab(x0,x1,z0,z1,e.ceiling,e.ceiling+.22,ceiling);
+  slab(o.left,o.right,o.back-.18,o.back,e.ceiling,-.005,stone);
+  // Close the exposed lip beyond the imported canopy and support the tread edges.
+  slab(o.left-width,o.right+width,o.back-.19,o.back,-.005,.52,stone);
+  for(const [x0,x1] of [[o.left-width,o.left],[o.right,o.right+width]])
+    slab(x0,x1,o.back,-27.48,-.006,.52,stone);
+  const stringer=entranceStringer();
+  for(const [i,x] of [o.left+.405,o.right].entries()){
+    const mesh=new THREE.Mesh(stringer,mat(stone));
+    mesh.rotation.y=-Math.PI/2;
+    mesh.position.x=x;
+    mesh.receiveShadow=true;
+    mesh.userData.sharedGeometry=i>0;
+    root.add(mesh);
+  }
+
+  for(const [x,z] of [[-5,-30.25],[-5,-33.5],[-1.45,-33.75],[.55,-37]]){
+    cube(root,1.25,.055,.36,trim,x,e.ceiling-.028,z);
+    cube(root,1.13,.024,.27,0xffefd2,x,e.ceiling-.062,z,{emissive:0xffeed0,emissiveIntensity:.65});
+  }
+  for(const [x0,x1,z0,z1] of panels) {
+    for(let z=Math.ceil(z0);z<z1-.02;z++) cube(root,x1-x0,.004,.013,0x77736b,(x0+x1)/2,y+.002,z);
+    for(let x=Math.ceil(x0);x<x1-.02;x++) cube(root,.013,.004,z1-z0,0x77736b,x,y+.002,(z0+z1)/2);
+  }
+  for(const x of [o.left+.12,o.right-.12]){
+    cube(root,.065,.065,.65,trim,x,y+.92,e.shaftEnd-.63,{metalness:.5});
+    cube(root,.065,.16,.065,trim,x,y+.84,e.shaftEnd-.95,{metalness:.5});
+  }
+  sign(root,'대합실 →',2.2,.47,-4.73,y+2.55,e.bend+.017,'#424746');
+  const arrow=new THREE.Shape();
+  for(const [i,[x,z]] of [[0,.46],[-.29,.1],[-.10,.1],[-.10,-.4],[.10,-.4],[.10,.1],[.29,.1]].entries())
+    i?arrow.lineTo(x,z):arrow.moveTo(x,z);
+  const geometry=new THREE.ShapeGeometry(arrow);
+  // A single geometry is owned by this scene even though several arrows use it.
+  for(const [i,[x,z,yaw]] of [[-4,-33.65,-Math.PI/2],[-2.3,-33.65,-Math.PI/2],[-.65,-33.65,-Math.PI/2],[.55,-34.7,0],[.55,-36.6,0]].entries()){
+    const mesh=new THREE.Mesh(geometry,mat(0xe8e1d0));
+    mesh.rotation.set(-Math.PI/2,0,yaw);
+    mesh.position.set(x,y+.009,z);
+    mesh.userData.sharedGeometry=i>0;
+    root.add(mesh);
+  }
+ }
  hall(data){
   this.floor(24,52,0xc8c4b6);
+  if(data.fromEntrance){
+    cube(this.root,14,.25,27,0xb9b3a9,0,3.43,7);
+    cube(this.root,14,3.3,.25,0xa69e91,0,1.65,19.4);
+  }
   const accent=data.line==='2'?0x347147:0x614d82;
   for(const x of [-7,7]) {
     cube(this.root,.30,3.3,27,0xddd6c5,x,1.65,7);
@@ -65,7 +143,12 @@ export class World{
  blocked(x,z){
   if(this.mode==='street'){
     if(z<-39.55&&z>-45.4&&x>9.82)return true;
-    if(this.transit.entrance&&entranceBlocked(x,z))return true;
+    if(this.connectedEntrance) {
+      if(this.entranceActive) return !entranceWalkable(x,z);
+      const {opening:o}=STATION_ENTRANCE;
+      if(z<=o.front&&z>=o.back-.25&&x>=o.left-.24&&x<=o.right+.24)
+        return !atEntranceEntry(x,z);
+    } else if(this.transit.entrance&&entranceBlocked(x,z))return true;
   }
   if((this.mode==='hall'||this.mode==='exit-hall')&&z>gateZ-1.22&&z<gateZ+1.22)
     return !this.gate?.open||Math.abs(x)>.44;
@@ -146,22 +229,73 @@ export class World{
     }
     this.desiredYaw=Math.atan2(-dx,-dz);
   }
-  p.y=this.mode==='street'&&this.transit.entrance?entranceHeight(p.x,p.z):this.mode==='platform'?.3:0;
+  if(this.connectedEntrance&&!this.entranceActive&&this.mode==='street'&&atEntranceEntry(p.x,p.z))
+    this.entranceActive=true;
+  p.y=this.mode==='street'&&this.transit.entrance&&(!this.connectedEntrance||this.entranceActive)
+    ?entranceHeight(p.x,p.z,this.connectedEntrance??false):this.mode==='platform'?.3:0;
   return Math.hypot(p.x-this.moveOrigin.x,p.z-this.moveOrigin.y)>.0001;
  }
  crowdCollision(running,dt,onHit){for(const n of this.npcs){const p=this.hero.position,d=p.distanceTo(n.g.position);if(d<.64&&d>.005){const v=p.clone().sub(n.g.position);v.y=0;v.normalize();
  const push=(.64-d)+.02;
- n.g.position.addScaledVector(v,-push);onHit(running);}}}
+ if(!this.npcBlocked(n.g.position.x-v.x*push,n.g.position.z-v.z*push))
+   n.g.position.addScaledVector(v,-push);
+ onHit(running);}}}
  advanceHero(dt,{running=false,grip=false,seated=false}={}){
   const p=this.hero.position;
   const actual=Math.hypot(p.x-this.moveOrigin.x,p.z-this.moveOrigin.y);
   const distance=Math.min(actual,this.commandedSpeed*dt);
   this.heroAnimator.advance(dt,{distance,speed:dt?distance/dt:0,yaw:this.desiredYaw,running,grip,seated});
  }
+ npcBlocked(x,z){
+  if(this.mode==='street'&&this.connectedEntrance){
+    const {opening:o}=STATION_ENTRANCE;
+    return (x>o.left-.45&&x<o.right+.45&&z<o.front+.45&&z>o.back-.45)
+      || (z<-39.55&&z>-45.4&&x>9.82);
+  }
+  return this.blocked(x,z);
+ }
+ constrainEntranceCamera(target){
+  if(this.arrivalCamera) {
+    target.y=Math.min(target.y,3.05);
+    target.z=Math.min(target.z,19.03);
+  }
+  if(!this.entranceActive)return target;
+  const hero=this.hero.position, e=STATION_ENTRANCE;
+  const focus=this.entranceCameraFocus??=new THREE.Vector3();
+  focus.set(hero.x,hero.y+1.45,hero.z);
+  const offset=this.entranceCameraOffset??=new THREE.Vector3();
+  offset.copy(target).sub(focus);
+  // Shorten the follow ray before it reaches the soffit or a corner.
+  const count=Math.max(1,Math.ceil(offset.length()/.10));
+  for(let i=1;i<=count;i++){
+    const f=i/count, x=focus.x+offset.x*f, y=focus.y+offset.y*f, z=focus.z+offset.z*f;
+    if(z>e.opening.front&&y>.12)continue;
+    if(!insideEntranceFloor(x-.13,Math.min(e.opening.front,z+.13))
+        ||!insideEntranceFloor(x+.13,z-.13)
+        ||(z<=e.opening.back+.13&&y>e.ceiling-.18)
+        ||y<entranceHeight(x,z)+.18)
+      return target.copy(focus).addScaledVector(offset,(i-1)/count);
+  }
+  return target;
+ }
+ followCamera(dt,seated){
+  const p=this.hero.position, underground=p.y<-.6;
+  const target=this.followTarget??=new THREE.Vector3();
+  target.set(p.x,p.y-(seated?.45:0)+(underground?1.85:3.1),
+    p.z+(underground?1.8:this.mode==='vehicle'?3.4:4.85));
+  this.constrainEntranceCamera(target);
+  const blend=1-Math.exp(-dt*8);
+  this.camera.position.lerp(target,blend);
+  this.constrainEntranceCamera(this.camera.position);
+  const e=STATION_ENTRANCE;
+  const turning=this.entranceActive&&underground&&p.z<=e.sideOpening&&p.z>e.bend+.45&&p.x<e.turn.x-.3;
+  this.cameraTurn=THREE.MathUtils.lerp(this.cameraTurn??0,turning?1:0,blend);
+  this.camera.lookAt(p.x+1.15*this.cameraTurn,p.y-(seated?.45:0)+1.15,p.z-3.2+1.5*this.cameraTurn);
+ }
  update(dt,time,{seated=false,rideMoving=false,intro=false,ended=false}={}){
   if(intro||ended)this.heroAnimator.advance(dt);
   this.traffic?.(time);
-  for(const npc of this.npcs){if(npc.stationary)npc.animator.advance(dt,{seated:!!npc.sitting});else moveNpc(npc,dt,(x,z)=>this.blocked(x,z));npc.g.position.y=(this.mode==='street'&&this.transit.entrance?entranceHeight(npc.g.position.x,npc.g.position.z):this.mode==='platform'?.3:0)+(npc.sitting?.24:0);}for(const s of this.spots){s.ring.material.opacity=(s.boarding||s.alighting)?.7+Math.sin(time*4)*.25:.55+Math.sin(time*2)*.18;if(s.boarding||s.alighting){s.ring.scale.setScalar(1+.08*Math.sin(time*4));s.beacon.material.emissiveIntensity=1.1+.9*Math.sin(time*4);}}if(this.portal){this.portal.children[0].rotation.z=Math.sin(time)*.03;this.portal.children[1].material.opacity=.2+Math.sin(time*2)*.08;}if(rideMoving)for(const g of this.cityMotion){g.position.z+=dt*8;if(g.position.z>30)g.position.z=-50;}if(intro){this.hero.position.set(1.5,0,4);this.hero.rotation.y=0;this.camera.position.set(12+Math.sin(time*.12)*1.4,7.7,23);this.camera.lookAt(-.5,2,-20);}else{const target=new THREE.Vector3(this.hero.position.x,this.hero.position.y+(seated?-.45:0)+(this.hero.position.y<-.6?1.85:3.1),this.hero.position.z+(this.hero.position.y<-.6?1.8:this.mode==='vehicle'?3.4:4.85));this.camera.position.lerp(target,1-Math.exp(-dt*8));this.camera.lookAt(this.hero.position.x,this.hero.position.y+(seated?-.45:0)+1.15,this.hero.position.z-3.2);}this.renderer.render(this.scene,this.camera);}
+  for(const npc of this.npcs){if(npc.stationary)npc.animator.advance(dt,{seated:!!npc.sitting});else moveNpc(npc,dt,(x,z)=>this.npcBlocked(x,z));npc.g.position.y=(this.mode==='street'&&this.transit.entrance&&!this.connectedEntrance?entranceHeight(npc.g.position.x,npc.g.position.z,false):this.mode==='platform'?.3:0)+(npc.sitting?.24:0);}for(const s of this.spots){s.ring.material.opacity=(s.boarding||s.alighting)?.7+Math.sin(time*4)*.25:.55+Math.sin(time*2)*.18;if(s.boarding||s.alighting){s.ring.scale.setScalar(1+.08*Math.sin(time*4));s.beacon.material.emissiveIntensity=1.1+.9*Math.sin(time*4);}}if(this.portal){this.portal.children[0].rotation.z=Math.sin(time)*.03;this.portal.children[1].material.opacity=.2+Math.sin(time*2)*.08;}if(rideMoving)for(const g of this.cityMotion){g.position.z+=dt*8;if(g.position.z>30)g.position.z=-50;}if(intro){this.hero.position.set(1.5,0,4);this.hero.rotation.y=0;this.camera.position.set(12+Math.sin(time*.12)*1.4,7.7,23);this.camera.lookAt(-.5,2,-20);}else this.followCamera(dt,seated);this.renderer.render(this.scene,this.camera);}
 }
 
 const baseVehicle=World.prototype.vehicle;

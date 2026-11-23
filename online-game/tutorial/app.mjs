@@ -1,6 +1,7 @@
 import { World } from '/assets/world.js';
 import { loadCommuter, movementSpeed } from '/assets/hero/motion.js';
-import { entranceHeight, loadTransit } from '/assets/transit-scene.js';
+import { STATION_ENTRANCE } from '/assets/journey.js';
+import { loadTransit } from '/assets/transit-scene.js';
 import { createTutorial, routes, steps } from './state.mjs';
 import { createDialogue } from './dialogue.mjs';
 import { createPracticeInput } from './input.mjs';
@@ -9,7 +10,7 @@ import { createVisualGuide } from './visual-guide.mjs';
 const byId = id => document.getElementById(id);
 const tutorial = createTutorial();
 const dialogue = createDialogue(tutorial, undefined, readPosition);
-const entranceTargetY = entranceHeight(...steps.entrance.point);
+const entranceTargetY = STATION_ENTRANCE.landing.y;
 const integrated = Boolean(document.querySelector('meta[name="integrated-tutorial"][content="enabled"]'));
 const listeners = new AbortController();
 const inputKeys = createPracticeInput();
@@ -40,7 +41,7 @@ function loadScene(state) {
   if (!world) return;
   const stage = state.stage;
   let next;
-  if (['entranceApproach', 'entrance'].includes(stage)) next = 'entrance';
+  if (['entranceApproach', 'entrance', 'entranceTurn', 'entranceExit'].includes(stage)) next = 'entrance';
   else if (['gate', 'pass'].includes(stage)) next = 'hall';
   else if (['platform', 'railBoard'].includes(stage)) next = 'platform';
   else if (['railRide', 'railExit', 'bell', 'busRide', 'busExit'].includes(stage)) next = 'vehicle';
@@ -51,8 +52,12 @@ function loadScene(state) {
   sceneKey = next;
   switch (next) {
     case 'street': scene('street', { spawnZ: 9 }, { minX: -5, maxX: 5, minZ: -2, maxZ: 12 }); break;
-    case 'entrance': scene('street', { spawnX: -4, spawnZ: -17 }, { minX: -7, maxX: -3, minZ: -33, maxZ: -14 }); break;
-    case 'hall': scene('hall', { line: '5', spawnZ: 9 }, { minX: -3, maxX: 3, minZ: 1, maxZ: 12 }); break;
+    case 'entrance': scene('street', { connectedEntrance: true, spawnX: STATION_ENTRANCE.entry.x, spawnZ: -17 },
+      { minX: STATION_ENTRANCE.opening.left, maxX: STATION_ENTRANCE.corridorRight, minZ: STATION_ENTRANCE.end, maxZ: -14 }); break;
+    case 'hall':
+      inputKeys.clear();
+      scene('hall', { station: '공덕', line: '5', fromEntrance: true, spawnZ: 14 }, { minX: -3, maxX: 3, minZ: 1, maxZ: 19 });
+      break;
     case 'platform': scene('platform', { line: '5', station: '공덕', neighbors: ['마포', '애오개·충정로'], spawnZ: 4 },
       { minX: -4.45, maxX: 4.45, minZ: -5, maxZ: 7 }); break;
     case 'stop': scene('street', { spawnX: 5, spawnZ: -36 }, { minX: 2, maxX: 9, minZ: -45, maxZ: -34 }); break;

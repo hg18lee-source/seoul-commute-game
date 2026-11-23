@@ -1,4 +1,5 @@
-import { api, element, kst } from './online.js';
+import { api, element, kst, setAccount } from './online.js';
+import { startDailyCompletions } from './admin-completions.js';
 
 const $=id=>document.getElementById(id);
 const form=$('filters'), status=$('summary');
@@ -76,3 +77,4 @@ previous.onclick=()=>load(page-1);
 next.onclick=()=>load(page+1);
 form.onsubmit=event=>{event.preventDefault();load(1);};
 load(1);
+startDailyCompletions({api,element,kst,setAccount});

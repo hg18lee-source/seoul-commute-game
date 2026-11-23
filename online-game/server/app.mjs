@@ -3,10 +3,12 @@ import { performance } from 'node:perf_hooks';
 import { authentication } from './auth.mjs';
 import { audit, dashboard, detail, prune } from './audit.mjs';
 import { transaction } from './db.mjs';
-import { advance, allow, block, fail, ranking, records, start } from './plays.mjs';
-import { courses, rankingRules, rules, ruleVersions } from './rules.mjs';
+import { advance, allow, block, fail, ranking, records, start, uuid } from './plays.mjs';
+import { courses } from './rules.mjs';
 import { transit } from './transit.mjs';
 import { adminPage } from './admin-page.mjs';
+import { completionOverview, completionEvidence, completionRuns, logCompletionFailure,
+  newCompletionRun, refreshCompletions, seoulDate } from './daily-completions.mjs';
 
 const routes={
   session:['GET','public'],signup:['POST','public'],login:['POST','public'],'admin-login':['POST','public'],
@@ -14,6 +16,8 @@ const routes={
   'play-start':['POST','player'],'play-progress':['POST','player'],'play-finish':['POST','player'],
   'play-cancel':['POST','player'],transit:['GET','member'],
   'admin-page':['GET','admin'],'admin-audit':['GET','admin'],'admin-detail':['GET','admin'],
+  'admin-completions':['GET','admin'],'admin-completion-evidence':['GET','admin'],
+  'admin-completion-runs':['GET','admin'],'admin-completion-recalculate':['POST','admin'],
   'audit-prune':['GET','cron'],
 };
 const actions=[...Object.keys(routes),'unknown'];
@@ -62,8 +66,46 @@ export function configFrom(env=process.env) {
     seoulKey:env.SEOUL_OPENAPI_KEY,busKey:env.DATA_GO_KR_SERVICE_KEY};
 }
 
-export function app(pool,config,{fetcher=fetch,clock=Date.now}={}) {
+function evidenceDate(url, now) {
+  const date=url.searchParams.get('date');
+  if (date===null) return seoulDate(now);
+  const at=new Date(date+'T00:00:00+09:00');
+  if (!/^[1-9]\d{3}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(at.getTime())||seoulDate(at)!==date)
+    throw new Rejected(400,'aggregate_date');
+  return date;
+}
+
+function evidenceCursor(url) {
+  const before=url.searchParams.get('before');
+  if (before===null) return;
+  const [at,playId,extra]=before.split(',');
+  const ms=new Date(at);
+  if (extra!==undefined||!uuid(playId)||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(at)
+    ||!Number.isFinite(ms.getTime())||ms.toISOString().slice(0,23)!==at.slice(0,23))
+    throw new Rejected(400,'aggregate_cursor');
+  return {at,playId};
+}
+
+function runCursor(url) {
+  const before=url.searchParams.get('before');
+  if (before!==null&&(!/^[1-9]\d{0,18}$/.test(before)||BigInt(before)>9223372036854775807n))
+    throw new Rejected(400,'aggregate_cursor');
+  return before;
+}
+
+export function app(pool,config,{fetcher=fetch,clock=Date.now,scheduleCompletion=()=>{}}={}) {
   const auth=authentication(config);
+  async function refreshSavedRecord(run) {
+    try {
+      await transaction(pool,db=>refreshCompletions(db,run,clock));
+    } catch {
+      try {await transaction(pool,db=>logCompletionFailure(db,run,new Date(clock())));}
+      catch {
+        console.error(JSON.stringify({event:'aggregate_log_failed',runId:run.id,requestId:run.requestId,
+          playId:run.playId,reason:'aggregate_error'}));
+      }
+    }
+  }
   async function route(db, ctx, request, url) {
     const definition=routes[ctx.action];
     const mutating=request.method==='POST';
@@ -112,7 +154,7 @@ export function app(pool,config,{fetcher=fetch,clock=Date.now}={}) {
         await db.query('UPDATE commute_sessions SET revoked_at=clock_timestamp() WHERE token_hash=$1',[ctx.tokenHash]);
         await db.query("UPDATE commute_plays SET status='cancelled',invalid_reason='logout' WHERE session_hash=$1 AND status='active'",[ctx.tokenHash]);
         return {...allow({},200,'logout'),cookie:auth.clear};
-      case 'courses':return allow({courses,rules,ruleVersions,rankingRules});
+      case 'courses':return allow({courses});
       case 'records':return records(db,ctx,url);
       case 'ranking':return ranking(db,ctx,url);
       case 'play-start':return start(db,ctx,body,clock());
@@ -123,6 +165,16 @@ export function app(pool,config,{fetcher=fetch,clock=Date.now}={}) {
       case 'admin-page':return {...allow({},200,'admin_page'),html:adminPage};
       case 'admin-audit':return dashboard(db,url,actions);
       case 'admin-detail':return detail(db,url);
+      case 'admin-completions':return allow(await completionOverview(db,seoulDate(ctx.at)));
+      case 'admin-completion-evidence':return allow(await completionEvidence(db,evidenceDate(url,ctx.at),evidenceCursor(url)));
+      case 'admin-completion-runs':return allow(await completionRuns(db,evidenceDate(url,ctx.at),runCursor(url)));
+      case 'admin-completion-recalculate': {
+        const run=newCompletionRun({cause:'admin_recalculate',requestId:ctx.id,date:seoulDate(ctx.at),start:new Date(clock())});
+        const result=await refreshCompletions(db,run,clock);
+        return result.status==='failed'
+          ? {...fail(503,'aggregate_error'),body:{error:'aggregate_error',...result}}
+          : allow(result,200,'aggregate_'+result.status);
+      }
       default:return block(404,'unknown_api');
     }
   }
@@ -163,6 +215,13 @@ export function app(pool,config,{fetcher=fetch,clock=Date.now}={}) {
       ctx.user=ctx.verifiedUser;
       try {await transaction(pool,db=>audit(db,ctx,result,performance.now()-started));}
       catch {console.error(JSON.stringify({event:'audit_write_failed',requestId:ctx.id,action:ctx.action,reason:'service_error'}));}
+    }
+    if (result.savedRecord) {
+      const {playId,finishedAt}=result.savedRecord;
+      const run=newCompletionRun({cause:'record_saved',requestId:ctx.id,playId,date:seoulDate(finishedAt),start:new Date(clock())});
+      const work=refreshSavedRecord(run);
+      try {await scheduleCompletion(work);}
+      catch {console.error(JSON.stringify({event:'aggregate_schedule_failed',runId:run.id,requestId:ctx.id,playId,reason:'aggregate_error'}));}
     }
     const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','X-Request-Id':ctx.id};
     if (result.cookie) headers['Set-Cookie']=result.cookie;

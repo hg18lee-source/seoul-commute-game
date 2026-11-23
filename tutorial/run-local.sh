@@ -3,7 +3,10 @@ set +x
 set -Eeuo pipefail
 umask 077
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../online-game"
-[[ "${1:-}" == '' || "$1" == '--test' ]] || { printf '사용법: bash tutorial/run-local.sh [--test]\n' >&2; exit 2; }
+case "$#:${1:-}" in
+  0:|1:--test|2:--admin) ;;
+  *) printf '사용법: bash tutorial/run-local.sh [--test | --admin 닉네임]\n' >&2; exit 2 ;;
+esac
 command -v node >/dev/null
 command -v npm >/dev/null
 pgbin="$(pg_config --bindir)"
@@ -27,7 +30,10 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 mkdir -- "$run/socket"
 "$pgbin/initdb" -D "$run/db" -U commute_local --auth=trust --no-locale --encoding=UTF8 >/dev/null
-"$pgbin/pg_ctl" -D "$run/db" -l "$run/postgres.log" -o "-h '' -k '$run/socket' -p 5432" -w start >/dev/null
+if ! "$pgbin/pg_ctl" -D "$run/db" -l "$run/postgres.log" -o "-h '' -k '$run/socket' -p 5432" -w start >/dev/null; then
+  cat "$run/postgres.log" >&2
+  exit 1
+fi
 pg_started=yes
 db="postgresql://commute_local@localhost:5432/commute_test_tutorial?host=$run/socket"
 "$pgbin/createdb" -h "$run/socket" -p 5432 -U commute_local commute_test_tutorial
@@ -38,5 +44,8 @@ if [[ "${1:-}" == --test ]]; then
 else
   env -i PATH="$PATH" HOME="$HOME" npm run build
   env -i PATH="$PATH" HOME="$HOME" DATABASE_URL="$db" PASSWORD_PEPPER="$pepper" node scripts/migrate.mjs
+  if [[ "${1:-}" == --admin ]]; then
+    env -i PATH="$PATH" HOME="$HOME" DATABASE_URL="$db" PASSWORD_PEPPER="$pepper" node scripts/admin.mjs "$2"
+  fi
   env -i PATH="$PATH" HOME="$HOME" DATABASE_URL="$db" PASSWORD_PEPPER="$pepper" PORT=8034 node scripts/dev.mjs
 fi

@@ -5,8 +5,9 @@ import { app } from '../../online-game/server/app.mjs';
 import { createPracticeInput } from '../../online-game/tutorial/input.mjs';
 import { createDialogue } from '../../online-game/tutorial/dialogue.mjs';
 import { createTutorial, steps } from '../../online-game/tutorial/state.mjs';
+import { STATION_ENTRANCE, entranceWalkable } from '../../online-game/dist/journey.js';
 import { World } from '../../online-game/dist/world.js';
-import { entranceBlocked, entranceHeight } from '../../online-game/dist/transit-scene.js';
+import { entranceHeight } from '../../online-game/dist/transit-scene.js';
 
 function fixture() {
   const game = createTutorial();
@@ -95,10 +96,12 @@ test('rail completes only with the correct platform, opened gate and timed stop'
   const game = createTutorial();
   common(game, 'rail');
   const [lane, landing] = steps.entrance.point;
-  for (let z = -17; z >= landing; z -= .1) assert.equal(entranceBlocked(lane, z), false);
+  for (let z = -17; z >= landing; z -= .1) assert.equal(z>STATION_ENTRANCE.entry.z||entranceWalkable(lane,z),true);
   assert.ok(entranceHeight(lane, landing) < -3);
   assert.ok(at(game)); // Stair entrance waypoint
   assert.ok(at(game)); // Landing
+  assert.ok(at(game)); // Right turn
+  assert.ok(at(game)); // Hall connection
   assert.ok(at(game, { interact: true }));
   assert.equal(at(game, { gateOpen: false }), false);
   assert.ok(at(game, { gateOpen: true }));
@@ -110,7 +113,7 @@ test('rail completes only with the correct platform, opened gate and timed stop'
   assert.ok(game.practice({ dt: 1.5 }));
   assert.ok(at(game, { forward: true }));
   assert.equal(game.snapshot().phase, 'complete');
-  assert.equal(game.snapshot().completed.length, 12);
+  assert.equal(game.snapshot().completed.length, 14);
 });
 
 test('bus requires E at the sign, front door, bell, and rear door after the stop', () => {
@@ -154,8 +157,7 @@ test('game keys are ignored during text entry and held keys clear on focus loss'
 test('gate prompt, E eligibility, and dialogue use the same distance judgment', () => {
   const game = createTutorial();
   common(game, 'rail');
-  assert.ok(at(game));
-  assert.ok(at(game));
+  for (let i=0;i<4;i++) assert.ok(at(game));
   assert.equal(game.snapshot().stage, 'gate');
   let position = { x: 0, z: 8 };
   const chat = createDialogue(game, undefined, () => position);
@@ -257,28 +259,60 @@ test('the entrance waypoint accepts only the approach aligned with the right sta
   const right = game.guide({ x, z });
   assert.match(right.label, /오른쪽/);
   for (const offset of [-right.radius, 0, right.radius])
-    assert.equal(entranceBlocked(x + offset, -23), false);
+    assert.ok(entranceWalkable(x + offset, -23));
   assert.equal(game.practice({ x, z }), true);
 });
 
-test('real World.move can descend the right lane and the landing requires the lower elevation', () => {
-  const game = createTutorial();
-  common(game, 'rail');
-  assert.ok(at(game));
-  const [x, z] = steps.entrance.point;
-  const entranceTargetY = entranceHeight(x, z);
-  assert.ok(x > -5 && entranceTargetY < -3);
-  assert.equal(game.practice({ x, z, y: 0, entranceTargetY }), false);
-  const world = Object.assign(Object.create(World.prototype), {
-    hero: { position: { x, z: -21, y: 0 } }, mode: 'street', transit: { entrance: true },
-    moveOrigin: { set(x, y) { Object.assign(this, { x, y }); } }, bounds: { minX: -7, maxX: -3, minZ: -33, maxZ: -14 },
+test('World.move follows the tutorial from the pavement to the hall through valid geometry', () => {
+  const game=createTutorial();
+  common(game,'rail');
+  const {entry,landing,turn,exit,opening}=STATION_ENTRANCE;
+  const world=Object.assign(Object.create(World.prototype),{
+    hero:{position:{x:entry.x,z:-17,y:0}},mode:'street',transit:{entrance:true},connectedEntrance:true,
+    moveOrigin:{set(x,y){Object.assign(this,{x,y});}},bounds:{minX:-10,maxX:10,minZ:-48,maxZ:32},
   });
-  for (let frame = 0; frame < 250 && game.snapshot().stage === 'entrance'; frame++) {
-    assert.ok(world.move(0, -1, .02, 3.6));
-    game.practice({ ...world.hero.position, entranceTargetY });
+  const practice=()=>game.practice({...world.hero.position,entranceTargetY:landing.y,gateOpen:world.gate?.open});
+  function walkTo(x,z) {
+    const p=world.hero.position;
+    for(let frames=0;Math.hypot(x-p.x,z-p.z)>1e-6;frames++){
+      assert.ok(frames<240);
+      const distance=Math.hypot(x-p.x,z-p.z);
+      assert.ok(world.move(x-p.x,z-p.z,Math.min(.035,distance/3.6),3.6));
+      practice();
+    }
   }
-  assert.equal(game.snapshot().stage, 'gate');
-  assert.ok(world.hero.position.y < -3);
+  assert.ok(world.blocked(-5,entry.z-.1));
+  assert.ok(world.npcBlocked(entry.x,entry.z-.1));
+  walkTo(entry.x,-21);
+  assert.equal(game.snapshot().stage,'entrance');
+  assert.equal(game.practice({x:landing.x,z:landing.z,y:0,entranceTargetY:landing.y}),false);
+  assert.equal(game.practice({x:exit.x,z:exit.z,y:landing.y,entranceTargetY:landing.y}),false);
+  walkTo(entry.x,-26.8);
+  assert.ok(world.entranceActive);
+  assert.ok(world.hero.position.y<-.9&&world.hero.position.y>landing.y);
+  assert.ok(world.blocked(opening.right+.1,-26.8));
+  assert.ok(world.blocked(-5,-26.8));
+  walkTo(landing.x,landing.z);
+  assert.equal(world.hero.position.y,landing.y);
+  assert.equal(game.snapshot().stage,'entranceTurn');
+  assert.ok(world.blocked(landing.x,-36));
+  walkTo(landing.x,turn.z);
+  walkTo(turn.x,turn.z);
+  assert.equal(game.snapshot().stage,'entranceExit');
+  walkTo(exit.x,exit.z-.35);
+  assert.equal(game.snapshot().stage,'gate');
+  assert.equal(world.hero.position.y,landing.y);
+
+  world.mode='hall';
+  world.hero.position={x:0,y:0,z:14};
+  world.gate={open:false};
+  walkTo(0,4.69);
+  assert.ok(world.blocked(0,3.35),'the closed gate stops forward movement');
+  assert.ok(at(game,{interact:true}));
+  world.gate.open=true;
+  assert.ok(world.blocked(.8,3.35),'the open gate still requires the central lane');
+  walkTo(0,1.6);
+  assert.equal(game.snapshot().stage,'platform');
 });
 
 test('tutorial access is cookie-aware, read-only, and independent of the official action log', async () => {

@@ -35,7 +35,7 @@ export function createVisualGuide(world, marker, label, distance, arrow, guidePa
     group = new THREE.Group();
     world.root.add(group);
     const [x, z] = guide.point;
-    const ground = stage === 'entrance' || stage === 'entranceApproach' ? entranceHeight(x, z) :
+    const ground = stage.startsWith('entrance') ? entranceHeight(x, z) :
       world.mode === 'platform' ? .3 : 0;
     group.position.set(x, ground + .045, z);
     const radius = guide.radius;

@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BUS_COURSE, BUS_STOPS, COURSE, COURSES, TRAIN_LINES, RIGHT_EXIT_PATH, RIGHT_STATION_EXIT } from '../dist/journey.js';
+import { readFile } from 'node:fs/promises';
+import { BUS_COURSE, BUS_STOPS, COURSE, COURSES, TRAIN_LINES, RIGHT_EXIT_PATH, RIGHT_EXIT_RULES, RIGHT_STATION_EXIT, STATION_ENTRANCE } from '../dist/journey.js';
 import { World } from '../dist/world.js';
-import { Group, Matrix4, Vector3 } from '../dist/vendor/three.module.js';
+import { buildGongdeok } from '../dist/gongdeok-street.js';
+import { entranceHeight } from '../dist/transit-scene.js';
+import { Group, Matrix4, Raycaster, Vector3 } from '../dist/vendor/three.module.js';
 import { start, ranking } from '../server/plays.mjs';
 import { initialState, originalExitRules, rules, validateBatch } from '../server/rules.mjs';
 
@@ -39,30 +42,55 @@ test('the single canonical course validates from Gongdeok entrance through Chung
   }
 
   emit('sample',{...current.point});
-  moveTo(9.1,-4.2,-32.1);
+  const {entry,descentEnd,turn,exit}=STATION_ENTRANCE;
+  moveTo(7.1,entry.x,entry.z-.08);
+  change({stage:'entrance'});
+  moveTo(9.2,entry.x,descentEnd-.08);
+  change({stage:'entrance-corridor'});
+  moveTo(9.6,entry.x,turn.z);
+  moveTo(10.6,turn.x,turn.z);
+  moveTo(12.1,exit.x,exit.z-.08);
   change({stage:'hall',x:0,z:14});
-  moveTo(12.1,0,2);
+  moveTo(15.1,0,2);
   change({stage:'platform',x:0,z:8});
-  moveTo(17.3,4.45,0);
+  moveTo(20.3,4.45,0);
   change({stage:'vehicle',x:0,z:4,ride:{type:'train',index:1,direction:COURSE.direction,
     open:false,bell:false,grip:false,seated:false}});
-  moveTo(29.3,0,4);
+  moveTo(32.3,0,4);
   vehicle({index:2,open:true});
-  moveTo(35.3,0,4);
+  moveTo(38.3,0,4);
   vehicle({open:false});
-  moveTo(47.3,0,4);
+  moveTo(50.3,0,4);
   vehicle({index:COURSE.destinationIndex,open:true});
-  moveTo(53,0,-11);
+  moveTo(56,0,-11);
   change({stage:'platform',station:COURSE.destination,x:0,z:8,ride:null});
-  moveTo(54.3,RIGHT_EXIT_PATH[1].x,RIGHT_EXIT_PATH[1].z);
-  moveTo(60,RIGHT_STATION_EXIT.x,RIGHT_STATION_EXIT.z);
+  moveTo(57.3,RIGHT_EXIT_PATH[1].x,RIGHT_EXIT_PATH[1].z);
+  moveTo(63,RIGHT_STATION_EXIT.x,RIGHT_STATION_EXIT.z);
   change({stage:'exit-hall',x:0,z:14});
-  moveTo(68,0,2);
+  moveTo(71,0,2);
   change({stage:'exit-street',x:0,z:34});
-  moveTo(86,0,-25.2);
+  moveTo(89,0,-25.2);
 
   assert.equal(current.point.stage,'exit-street');
   assert.ok(Math.abs(current.point.z+26)<1.2,'player should reach the finish portal');
+});
+
+test('the connected entrance rejects early transitions and points inside the wall', () => {
+  const {entry,descentEnd,turn,exit}=STATION_ENTRANCE;
+  function check(stage,x,z,next,position={},version=rules) {
+    const initial=initialState(), before={...initial.point,stage,x,z};
+    const after={...before,stage:next,...position};
+    const play={course:COURSE.id,rules:version,start_ms:0,seen_ms:0,paused_ms:0,pause_ms:null,
+      state:{...initial,point:before}};
+    return validateBatch(play,{wall:0,events:[{kind:'stage',wall:0,before,after}]},0);
+  }
+  assert.equal(check('street',entry.x,entry.z+.3,'entrance').reason,'bad_snapshot');
+  assert.equal(check('street',-4,-32.1,'hall',{x:0,z:14}).reason,'stage_transition');
+  assert.ok(check('street',-4,-32.1,'hall',{x:0,z:14},RIGHT_EXIT_RULES).state);
+  assert.equal(check('entrance',entry.x,descentEnd+.6,'entrance-corridor').reason,'stage_transition');
+  assert.equal(check('entrance-corridor',turn.x,turn.z,'hall',{x:0,z:14}).reason,'stage_transition');
+  assert.equal(check('entrance-corridor',entry.x,exit.z,'hall',{x:0,z:14}).reason,'movement');
+  assert.ok(check('entrance-corridor',exit.x,exit.z,'hall',{x:0,z:14}).state);
 });
 
 test('the 260 course validates from Gongdeok through Mapo Police and Ahyeon Elementary to Chungjeongno and the office', () => {
@@ -178,6 +206,52 @@ test('platform transition validates the exact exit area without confusing it wit
   assert.ok(transition({x:0,z,line:'2',nextLine:'5',target:'hall',version:originalExitRules,station:'충정로'}).reason);
 });
 
+test('the imported stair and added connection have continuous floors, walls and overhead clearance', async t => {
+  const previous={self:globalThis.self,createImageBitmap:globalThis.createImageBitmap,document:globalThis.document};
+  t.after(()=>Object.assign(globalThis,previous));
+  globalThis.self=globalThis;
+  // Decode the actual GLB geometry. Texture upload and canvas drawing require a browser.
+  globalThis.createImageBitmap=async()=>({width:1024,height:1024});
+  globalThis.document={createElement:()=>({getContext:()=>({
+    fillRect(){},fillText(){},drawImage(){},
+    getImageData:()=>({data:[0,0,0,255]}),
+    createLinearGradient:()=>({addColorStop(){}}),
+  })})};
+  const {GLTFLoader}=await import('../dist/hero/vendor/loaders/GLTFLoader.js');
+  const bytes=await readFile(new URL('../dist/transit-assets/gongdeok-entrance.glb',import.meta.url));
+  const asset=await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');
+  const world=Object.assign(Object.create(World.prototype),{root:new Group(),entranceActive:true});
+  buildGongdeok(world.root,asset,false,true);
+  world.buildEntranceConnection();
+  world.root.updateMatrixWorld(true);
+
+  const model=world.root.getObjectByName('공덕역 1번 출구');
+  for(const name of ['Glass','Auto_Steps_low','Handler_Center_low']) assert.ok(model.getObjectByName(name));
+  for(const name of ['Floor','Floor_Underground','Wall']) assert.equal(model.getObjectByName(name),undefined);
+  assert.ok(asset.scene.getObjectByName('Floor'));
+
+  const e=STATION_ENTRANCE;
+  const ray=(x,y,z,dx,dy,dz)=>new Raycaster(new Vector3(x,y,z),new Vector3(dx,dy,dz)).intersectObject(world.root,true)[0];
+  assert.ok(Math.abs(ray(-2.5,1,-26,0,-1,0).point.y)<.025,'adjacent pavement is intact');
+  for(const z of [-25.8,-27.7,-29.15,-30.3]) {
+    const x=e.entry.x, feet=entranceHeight(x,z);
+    const tread=ray(x,feet+.55,z,0,-1,0);
+    assert.ok(tread&&Math.abs(tread.point.y-feet)<.17,`feet and step align at ${z}`);
+  }
+  assert.ok(ray(e.entry.x,.04,-26,0,-1,0).point.y<-.8,'no street slab over the stair');
+  for(const [x,z] of [[e.landing.x,e.landing.z],[e.turn.x,e.turn.z],[e.exit.x,e.exit.z]]) {
+    assert.ok(Math.abs(ray(x,-2,z,0,-1,0).point.y-e.landing.y)<.006);
+    assert.equal(ray(x,-2,z,0,1,0).point.y.toFixed(3),e.ceiling.toFixed(3));
+    world.hero={position:new Vector3(x,e.landing.y,z)};
+    const camera=world.constrainEntranceCamera(new Vector3(x,1,z+4));
+    assert.ok(camera.y<e.ceiling-.17&&camera.distanceTo(world.hero.position)>1);
+  }
+  assert.ok(Math.abs(ray(e.landing.x,-2,e.landing.z,0,0,-1).point.z-e.bend)<.02,
+    'the front wall closes the end of the shaft');
+  assert.ok(Math.abs(ray(e.turn.x,-2,e.turn.z,0,0,-1).point.z-e.end)<.02,
+    'the right passage remains open until the end wall');
+});
+
 test('right-side guide uses the safe floor, retains pillars, and is removed on scene cleanup', t => {
   const oldDocument=globalThis.document;
   t.after(()=>{globalThis.document=oldDocument;});
@@ -213,14 +287,23 @@ test('right-side guide uses the safe floor, retains pillars, and is removed on s
   assert.equal(world.root.getObjectByName('출구로 이동'),undefined);
 });
 
-test('new rail starts and default ranking use the new rule while bus and old rail clients keep the prior rule', async () => {
+test('play compatibility and server-selected official ranking rules', async () => {
   const ctx={user:{id:'local-player'}};
   const db={query:async()=>({rows:[]})};
-  for(const [course,exitRules,expected] of [
-    [COURSE.id,rules,rules], [COURSE.id,undefined,originalExitRules], [BUS_COURSE.id,rules,originalExitRules],
-  ]) assert.equal((await start(db,ctx,{course,exitRules},0)).body.rules,expected);
-  const rank=(course,version='')=>ranking(db,ctx,new URL('http://127.0.0.1/?course='+course+version));
-  assert.equal((await rank(COURSE.id)).body.rules,rules);
-  assert.equal((await rank(COURSE.id,'&rules='+originalExitRules)).body.rules,originalExitRules);
-  assert.equal((await rank(BUS_COURSE.id)).body.rules,originalExitRules);
+  for(const [course,capabilities,expected] of [
+    [COURSE.id,{entranceRules:rules,exitRules:RIGHT_EXIT_RULES},rules],
+    [COURSE.id,{exitRules:RIGHT_EXIT_RULES},RIGHT_EXIT_RULES],
+    [COURSE.id,{},originalExitRules],
+    [BUS_COURSE.id,{entranceRules:rules},originalExitRules],
+  ]) assert.equal((await start(db,ctx,{course,...capabilities},0)).body.rules,expected);
+  for(const [course,requested,expected] of [
+    [COURSE.id,'',rules], [COURSE.id,originalExitRules,rules], [BUS_COURSE.id,rules,originalExitRules],
+  ]) {
+    const url=new URL('http://127.0.0.1/?'+new URLSearchParams({course,rules:requested}));
+    const rankDb={query:async(_sql,args)=>{
+      assert.deepEqual(args,[course,expected,ctx.user.id,0]);
+      return {rows:[]};
+    }};
+    assert.deepEqual((await ranking(rankDb,ctx,url)).body,{rows:[],next:false,page:1,course});
+  }
 });

@@ -27,6 +27,8 @@ class TutorialHandler(SimpleHTTPRequestHandler):
             file = TUTORIAL / "index.html"
         elif len(parts) == 1 and parts[0] in PAGE_FILES:
             file = TUTORIAL / parts[0]
+        elif path == "/dist/journey.js":
+            file = ASSETS / "journey.js"
         elif parts[0] == "assets" and (
             len(parts) == 2 and parts[1] in ASSET_FILES or
             len(parts) >= 3 and parts[1] in ASSET_FOLDERS and

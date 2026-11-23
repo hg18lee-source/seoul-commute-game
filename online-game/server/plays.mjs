@@ -1,5 +1,6 @@
+import { CONNECTED_ENTRANCE_RULES, RIGHT_EXIT_RULES } from '../dist/journey.js';
 import { randomUUID } from 'node:crypto';
-import { courses, expiryMs, initialState, originalExitRules, rankingRules, rules, ruleVersions, validateBatch } from './rules.mjs';
+import { courses, expiryMs, initialState, officialRules, originalExitRules, supportedRules, validateBatch } from './rules.mjs';
 
 const recordPageSize = 6;
 
@@ -14,7 +15,9 @@ function date(ms) {return new Date(ms);}
 export async function start(db, ctx, body, now) {
   if (!knownCourse(body.course)) return block(400,'course');
   // A tab running the older client still uses the original portal and rule.
-  const version=courses[body.course].transport==='train'&&body.exitRules===rules?rules:originalExitRules;
+  const current=officialRules[body.course];
+  const version=courses[body.course].transport==='bus'||body.entranceRules===CONNECTED_ENTRANCE_RULES?current:
+    body.exitRules===RIGHT_EXIT_RULES?RIGHT_EXIT_RULES:originalExitRules;
   const id=randomUUID();
   await db.query(
     "INSERT INTO commute_plays(id,user_id,session_hash,course,rules,status,started_at,seen_at,state) VALUES($1,$2,$3,$4,$5,'active',$6,$6,$7)",
@@ -36,9 +39,9 @@ export async function advance(db, ctx, body, action, now) {
     [body.id,ctx.user.id,ctx.tokenHash]);
   if (!p) return block(404,'play_not_found');
   if (p.status!=='active') return block(409,p.invalid_reason==='connection_lost'?'connection_lost':'play_closed');
-  if (now-Number(p.seen_ms)>=expiryMs || now-Number(p.start_ms)>7200000 || !Object.hasOwn(ruleVersions,p.rules)) {
-    await end(db,p.id,'invalid',Object.hasOwn(ruleVersions,p.rules)?'connection_lost':'rules_changed');
-    return block(409,Object.hasOwn(ruleVersions,p.rules)?'connection_lost':'rules_changed');
+  if (now-Number(p.seen_ms)>=expiryMs || now-Number(p.start_ms)>7200000 || !supportedRules.has(p.rules)) {
+    await end(db,p.id,'invalid',supportedRules.has(p.rules)?'connection_lost':'rules_changed');
+    return block(409,supportedRules.has(p.rules)?'connection_lost':'rules_changed');
   }
   if (action==='play-cancel') {
     await end(db,p.id,'cancelled','cancelled');
@@ -69,13 +72,13 @@ export async function advance(db, ctx, body, action, now) {
   if (!ended) return allow({seq:body.seq},200,'progress_saved');
 
   await db.query('SELECT id FROM commute_users WHERE id=$1 FOR NO KEY UPDATE',[ctx.user.id]);
-  const args=[ctx.user.id,p.course,p.rules];
-  const {rows:[prior]}=await db.query(
-    'SELECT min(tenths) AS best FROM commute_records WHERE user_id=$1 AND course=$2 AND rules=$3',args);
   const tenths=Math.round((now-Number(p.start_ms)-pausedMs)/100)+Math.round((state.point.penalty??0)*10);
   await db.query('INSERT INTO commute_records(play_id,user_id,course,rules,tenths,finished_at) VALUES($1,$2,$3,$4,$5,$6)',
-    [p.id,...args,tenths,date(now)]);
-  return allow({tenths,best:prior.best===null?null:Math.min(prior.best,tenths),course:p.course},201,'record_saved');
+    [p.id,ctx.user.id,p.course,p.rules,tenths,date(now)]);
+  const {rows:[{best}]}=await db.query(
+    'SELECT min(tenths) AS best FROM commute_records WHERE user_id=$1 AND course=$2 AND rules=$3',
+    [ctx.user.id,p.course,officialRules[p.course]]);
+  return {...allow({tenths,best,course:p.course},201,'record_saved'), savedRecord:{playId:p.id,finishedAt:date(now)}};
 }
 
 export async function records(db, ctx, url) {
@@ -83,7 +86,10 @@ export async function records(db, ctx, url) {
   const {rows}=await db.query(
     'SELECT play_id,course,rules,tenths,finished_at FROM commute_records WHERE user_id=$1 ORDER BY finished_at DESC,play_id LIMIT 7 OFFSET $2',
     [ctx.user.id,(page-1)*recordPageSize]);
-  return allow({rows:rows.slice(0,recordPageSize),next:rows.length>recordPageSize,page,courses,ruleVersions});
+  const history=rows.slice(0,recordPageSize).map(({rules,...row})=>({
+    ...row,previousVersion:rules!==officialRules[row.course]
+  }));
+  return allow({rows:history,next:rows.length>recordPageSize,page,courses});
 }
 
 export function pageNumber(url) {
@@ -94,12 +100,11 @@ export function pageNumber(url) {
 export async function ranking(db, ctx, url) {
   const course=url.searchParams.get('course'), page=pageNumber(url);
   if (!knownCourse(course)) return block(400,'course');
-  const version=url.searchParams.get('rules')??rankingRules[course][0];
-  if(!Object.hasOwn(ruleVersions,version)) return block(400,'rules');
+  const version=officialRules[course];
   const {rows}=await db.query(
     'WITH best AS (SELECT user_id,min(tenths) AS tenths FROM commute_records WHERE course=$1 AND rules=$2 GROUP BY user_id), '+
     'ranked AS (SELECT user_id,tenths,rank() OVER (ORDER BY tenths)::int AS rank FROM best) '+
     'SELECT u.nickname,r.tenths,r.rank,r.user_id=$3 AS mine FROM ranked r JOIN commute_users u ON r.user_id=u.id '+
     'ORDER BY r.rank,r.user_id LIMIT 7 OFFSET $4',[course,version,ctx.user.id,(page-1)*recordPageSize]);
-  return allow({rows:rows.slice(0,recordPageSize),next:rows.length>recordPageSize,page,course,rules:version});
+  return allow({rows:rows.slice(0,recordPageSize),next:rows.length>recordPageSize,page,course});
 }

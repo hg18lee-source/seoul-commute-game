@@ -3,7 +3,7 @@ import { loadCommuter, movementSpeed } from './hero/motion.js';
 import { World } from './world.js';
 import { api, createPlay, currentAccount, element, setAccount } from './online.js';
 import { accountInterface } from './account-ui.js';
-import { BUS_COURSE, BUS_STOPS, CHECKPOINTS, COURSE, COURSES, TRAIN_LINES, RIGHT_EXIT_RULES, insideRightStationExit } from './journey.js';
+import { BUS_COURSE, BUS_STOPS, CHECKPOINTS, COURSE, COURSES, TRAIN_LINES, CONNECTED_ENTRANCE_RULES, RIGHT_EXIT_RULES, STATION_ENTRANCE, atEntranceExit, usesRightStationExit, insideRightStationExit } from './journey.js';
 
 const $ = id => document.getElementById(id);
 const keys = new Set();
@@ -61,7 +61,8 @@ function stage(mode,data={},before) {
   run.stageAt=run.time;
   world.busOnly=Boolean(run&&COURSES[run.course].transport==='bus');
   if(world.busOnly)world.transit={};
-  world.setStage(mode,{...data,busOnly:run&&COURSES[run.course].transport==='bus'});
+  world.setStage(mode,{...data,busOnly:world.busOnly,
+    connectedEntrance:mode==='street'&&run.rules===CONNECTED_ENTRANCE_RULES});
   if (before) capture('stage',before);
 }
 function menu() {
@@ -73,7 +74,7 @@ function menu() {
   $('dialog').hidden=$('hud').hidden=$('mobile-controls').hidden=true;
   document.body.classList.remove('playing');
   if(world)world.busOnly=false;
-  world?.setStage('street',{intro:true});
+  world?.setStage('street',{intro:true,connectedEntrance:true});
   ui.renderMenu();
 }
 async function start(course) {
@@ -99,7 +100,7 @@ async function start(course) {
     }
     if(actions&&!actions.isConnected)return;
     status.textContent='공식 플레이를 발급하는 중…';
-    issued=await api('play-start',{course,exitRules:RIGHT_EXIT_RULES});
+    issued=await api('play-start',{course,exitRules:RIGHT_EXIT_RULES,entranceRules:CONNECTED_ENTRANCE_RULES});
   }
   catch (error) {ui.showError(error,status);}
   finally {starting=false;for (const item of oldButtons) item.disabled=false;}
@@ -171,7 +172,7 @@ function finalRailPlatform() {
   const course=COURSES[run.course];
   return run.stage==='platform'&&course.transport==='train'&&run.line===course.line&&run.station===course.destination;
 }
-function rightStationExit() {return run.rules===RIGHT_EXIT_RULES&&finalRailPlatform();}
+function rightStationExit() {return usesRightStationExit(run.rules)&&finalRailPlatform();}
 function options() {
   const course=COURSES[run.course], bus=course.transport==='bus';
   const stopCount=course.destinationIndex-(bus?(run.ride?.index??run.busIndex):trainLines[run.line].indexOf(run.station));
@@ -211,7 +212,7 @@ function confirmRoute() {
 function platform(before) {
   const line = trainLines[run.line], index = line.indexOf(run.station);
   stage('platform',{station:run.station,line:run.line,neighbors:[line[index-1]??'회차',line[index+1]??'회차'],spawnZ:CHECKPOINTS.trainAlight.platform.z,
-    rightExit:run.rules===RIGHT_EXIT_RULES&&run.line===COURSES[run.course].line&&run.station===COURSES[run.course].destination},before);
+    rightExit:usesRightStationExit(run.rules)&&run.line===COURSES[run.course].line&&run.station===COURSES[run.course].destination},before);
 }
 function doorTiming(openSeconds) {
   const course=COURSES[run.course];
@@ -378,8 +379,15 @@ function refresh() {
         }
       } else {
         guide='공덕역 입구 · 골목 왼쪽 앞';
-        if (near(-5,-22,3.5)) hint='좌우 통로로 맞춘 뒤 ↑ · 계단 내려가기';
+        if (near(-5,-22,3.5)) hint=world.connectedEntrance?'오른쪽 계단으로 내려가세요':'좌우 통로로 맞춘 뒤 ↑ · 계단 내려가기';
       }
+    }
+    if (run.stage==='entrance'||run.stage==='entrance-corridor') {
+      guide='대합실로 이동';
+      const {x,z}=world.hero.position;
+      hint=run.stage==='entrance'?'↑ · 오른쪽 계단 아래로 이동':
+        z>STATION_ENTRANCE.turn.z+.45?'↑ · 바닥 화살표까지 이동':
+        x<STATION_ENTRANCE.turn.x-.6?'→ · 우측 연결 통로':'↑ · 대합실로 이동';
     }
     if (run.stage==='hall'||run.stage==='exit-hall') {
       guide=run.stage==='exit-hall'?(world.gate.open?'열린 개찰구를 지나 역 밖으로 나가세요':'앞쪽 개찰구에서 교통카드를 찍으세요'):(world.gate.open?'열린 개찰구를 통과해 승강장으로 이동하세요':'앞쪽 개찰구에서 교통카드를 찍으세요');
@@ -427,8 +435,20 @@ function step(dt) {
   const course=COURSES[run.course];
   const finishPoint=course.finishPoint??CHECKPOINTS.officeFinish.office;
   if ((run.stage===(course.transport==='bus'?'office':'exit-street'))&&near(finishPoint.x,finishPoint.z,finishPoint.radius)) { finish(true); return; }
-  if(course.transport==='train'&&run.stage==='street'&&run.busIndex===1&&
-      world.hero.position.z<=entranceLanding&&near(-5,entranceLanding,1.7)) {
+  const {x,z}=world.hero.position;
+  if(world.connectedEntrance&&run.stage==='street'&&world.entranceActive) {
+    const before=snapshot();
+    run.stage='entrance';
+    capture('stage',before);
+  } else if(run.stage==='entrance'&&z<=STATION_ENTRANCE.descentEnd) {
+    const before=snapshot();
+    run.stage='entrance-corridor';
+    capture('stage',before);
+  } else if(run.stage==='entrance-corridor'&&atEntranceExit(x,z)) {
+    keys.clear();
+    stage('hall',{station:run.station,line:run.line,fromEntrance:true},snapshot());
+  } else if(course.transport==='train'&&!world.connectedEntrance&&run.stage==='street'&&run.busIndex===1&&
+      z<=entranceLanding&&near(-5,entranceLanding,1.7)) {
     const before=snapshot();
     stage('hall',{station:run.station,line:run.line},before);
   } else if(run.stage==='hall'&&world.gate.open&&world.hero.position.z<=CHECKPOINTS.gate.triggerZ) {
@@ -481,7 +501,7 @@ function bind() {
       if (key==='Enter'&&!event.repeat) { event.preventDefault(); confirmRoute(); }
       return;
     }
-    keys.add(key);
+    if (!event.repeat) keys.add(key);
     if (!event.repeat&&key.toLowerCase()==='e') action();
     if (!event.repeat&&key===' ') grip();
   });
@@ -514,7 +534,7 @@ $('loading').hidden=true;
 if (!currentAccount()&&new URLSearchParams(location.search).has('admin')) ui.accountForm('admin-login');
 try {
   world=new World($('world'),await loadCommuter());
-  if (!run) world.setStage('street',{intro:true});
+  if (!run) world.setStage('street',{intro:true,connectedEntrance:true});
   priorFrame=performance.now();
   requestAnimationFrame(render);
 } catch {

@@ -30,7 +30,7 @@ const index=await readFile(new URL('index.html',source),'utf8');
 await writeFile(new URL('index.html',output),
   index.replace('</head>','<meta name="commute-tutorial" content="enabled">\n</head>').replace(/(["'])\.\/(game\.js|style\.css|online\.css)\1/g,(_,q,name)=>q+prefix+name+q));
 // Administrator HTML is rendered by the server and uses these local root paths.
-for (const name of ['admin-ui.js','online.js','style.css','online.css','credits.html'])
+for (const name of ['admin-ui.js','admin-completions.js','online.js','style.css','online.css','credits.html'])
   await cp(new URL(name,source),new URL(name,output));
 
 await mkdir(new URL(prefix+'tutorial/',output),{recursive:true});
@@ -41,7 +41,7 @@ for (const [name,bytes] of tutorialInputs) {
       .replace(/(["'])\.\/(style\.css|app\.mjs)\1/g,(_,quote,file)=>quote+'/'+prefix+'tutorial/'+file+quote);
     await writeFile(new URL('tutorial/index.html',output),html);
   } else {
-    const content=name.endsWith('.mjs')?bytes.toString('utf8').replaceAll("'/assets/","'../"):bytes;
+    const content=name.endsWith('.mjs')?bytes.toString('utf8').replaceAll("'/assets/","'../").replace("'../dist/journey.js'","'../journey.js'"):bytes;
     await writeFile(new URL(prefix+'tutorial/'+name,output),content);
   }
 }

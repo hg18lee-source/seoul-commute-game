@@ -1,5 +1,28 @@
 # 대중교통 출근 게임
 
+
+## 온라인 본편과 관리자 시연
+
+Node.js 22, npm, PostgreSQL 서버 도구, `pg_config`, WebGL 2 브라우저가 필요합니다. Ubuntu에서 PostgreSQL 도구가 없으면 `sudo apt install postgresql libpq-dev`로 준비합니다.
+
+```bash
+cd '/mnt/c/Users/통신운용/Desktop/AWS프로젝트/seoul-commute-entrance-integrated'
+if [ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]; then
+  source "${NVM_DIR:-$HOME/.nvm}/nvm.sh"
+  nvm use 22
+fi
+bash tutorial/run-local.sh --admin 개발관리자
+```
+
+1. 터미널에서 개발용 관리자 비밀번호를 정합니다. 서로 다른 문자가 8개 이상 들어간 20~128자 비밀번호가 필요합니다.
+2. [관리자 로그인](http://127.0.0.1:8034/?admin=1)에서 로그인해 [관리자 대시보드](http://127.0.0.1:8034/administrator)의 오늘 집계를 봅니다.
+3. 별도 브라우저 프로필에서 [본편](http://127.0.0.1:8034/)을 열고 개발용 ID를 생성합니다. 지하철 또는 버스 코스를 시작해 회사까지 완주합니다.
+4. 관리자 화면은 대시보드 탭이 보이는 동안 5초마다 새 집계를 조회합니다. **집계 근거 보기**와 **집계 실행 이력**에서 원본 플레이 ID와 실행 ID를 확인한 뒤 **다시 계산**을 눌러 값이 유지되는지 확인합니다.
+
+로컬 실행기는 새 임시 DB를 사용하며 종료 시 개발 계정과 기록을 정리합니다. 격리 DB 테스트는 루트에서 `bash tutorial/run-local.sh --test`로 실행합니다. 별도 성공 조건은 [검증 기록](report.md)에 있습니다.
+
+## 이전 정적 시안
+
 공덕동 집에서 시청역 인근 회사까지 플레이하는 로우폴리 3D 웹 시안입니다. 가입 없이 Play로 시작합니다.
 
 - 방향키 이동, Shift 달리기, M 스마트폰, Enter 안내 시작, E 상호작용, Space 손잡이, Esc 일시정지.

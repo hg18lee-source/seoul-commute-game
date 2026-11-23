@@ -2,7 +2,10 @@
 .env*
 node_modules
 public-online
-test
+# npm run build runs these two tests via prebuild.
+test/*
+!test/journey.test.mjs
+!test/npc.test.mjs
 dist/server
 worker
 *-review

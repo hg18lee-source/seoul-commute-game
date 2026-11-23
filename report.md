@@ -42,19 +42,19 @@ No findings.
 
 ## 완료 확인 명령
 
-워크스페이스의 일반 WSL에서 실행한다. 검토 증거를 기록하는 이 보고서만 비교에서 제외한다. 변경이 재검토한 작업 트리와 다르거나 검토 결과가 누락되거나 테스트가 실패하면 종료 코드가 0이 아니다.
+워크스페이스의 일반 WSL에서 실행한다. 배포 후보에서 동작 코드가 검토 기준과 같은지 확인한다. 이 보고서와 배포 절차서는 비교에서 제외한다. 변경이 재검토한 작업 트리와 다르거나 검토 결과가 누락되거나 테스트가 실패하면 종료 코드가 0이 아니다.
 
 ```bash
 (
   set -e
-  git cat-file -e a61ea59fdc68bb04d8f048791ae28d513a626dd8^{tree}
+  git cat-file -e 33fb7154dafb884fc663f1ecca00f45ec541ed7f^{tree}
   review_index=$(mktemp)
   rm "$review_index"
   trap 'rm -f "$review_index"' EXIT
   export GIT_INDEX_FILE="$review_index"
   git read-tree HEAD
   git add -A
-  git diff --cached --exit-code a61ea59fdc68bb04d8f048791ae28d513a626dd8 -- . ':(exclude)report.md'
+  git diff --cached --exit-code 33fb7154dafb884fc663f1ecca00f45ec541ed7f -- . ':(exclude)report.md' ':(exclude)RELEASE_DAILY.md'
   grep -qx 'No findings\.' report.md
   unset GIT_INDEX_FILE
   bash tutorial/run-local.sh --test
@@ -64,3 +64,10 @@ No findings.
 ```
 
 브라우저 시연까지 확인하면 실제 공식 플레이와 관리자 화면의 기록 ID를 이 보고서에 추가한다. 현재 브라우저와 API 통합 검증 상태는 보류다.
+
+
+## 배포 준비 재검증
+
+배포 후보에는 공덕역 승강장에서 지상으로 돌아온 뒤에도 활성 플레이 규칙에 맞는 새 계단을 사용하도록 수정한 코드와, 인덱스 락 대기를 2초로 제한한 마이그레이션을 포함했다. 새 PostgreSQL 18 단일 사용자 클러스터에서 001 적용 후 기존 계정과 완주 행을 추가해 002를 트랜잭션으로 적용한 결과, 두 원본 행이 유지됐고 새 이력 테이블과 유효한 인덱스를 확인했다. 본편 빌드·여정·NPC·튜토리얼 테스트 및 배포 명령 문법 확인이 통과했다.
+
+Vercel API DNS 조회 실패로 실제 운영 소스·Preview DB·Production DB 및 공개 화면은 확인하지 못했다. 단계별 절차와 롤백은 [RELEASE_DAILY.md](RELEASE_DAILY.md)에 있다.

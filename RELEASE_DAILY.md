@@ -66,7 +66,31 @@ Vercel 프로젝트 설정에서 해당 브랜치가 받는 **Preview** DB와 �
 bash tutorial/run-local.sh --test
 node --test tutorial/tests/tutorial.test.mjs
 
-# 링크 문자열은 DB 제공자에서 확인한 값을 입력한다. 입력은 화면에 표시되지 않는다.
+# 아래 입력은 제공자에서 Vercel에 연결된 두 대상을 각각 확인한 다음 진행한다.
+db_fingerprint() {
+  node -e 'const {createHash}=require("node:crypto");
+    try {
+      const u=new URL(process.env.DATABASE_URL);
+      if(!["postgres:","postgresql:"].includes(u.protocol)||!u.hostname||u.pathname.length<2||u.searchParams.has("host")) process.exit(1);
+      const endpoint=u.hostname.toLowerCase().replace(/-pooler(?=\.)/,"");
+      console.log(createHash("sha256").update(JSON.stringify([endpoint,u.port||"5432",decodeURIComponent(u.pathname)])).digest("hex"));
+    } catch {process.exit(1);}'
+}
+capture_target() (
+  set +x
+  local target="$1"
+  read -r -s -p "확인한 $target 런타임 DATABASE_URL: " DATABASE_URL </dev/tty
+  printf '\n' >&2
+  export DATABASE_URL
+  db_fingerprint > "$work/$target.fingerprint"
+)
+capture_target Preview
+capture_target Production
+if cmp -s "$work/Preview.fingerprint" "$work/Production.fingerprint"; then
+  printf 'Preview와 Production DB 대상이 같습니다. 중단합니다.\n' >&2
+  exit 1
+fi
+# 이후 연결은 앞에서 확인한 각 환경의 대상과 일치해야 한다.
 migrate_target() (
   set +x
   set -euo pipefail
@@ -77,6 +101,7 @@ migrate_target() (
   printf '\n' >&2
   test -n "$DATABASE_URL"
   export DATABASE_URL
+  test "$(db_fingerprint)" = "$(cat "$work/$target.fingerprint")"
   node --input-type=module <<'JS'
 import {makePool} from './server/db.mjs';
 const pool=makePool();
@@ -133,6 +158,7 @@ Preview 전용 관리자 계정이 없으면 같은 Preview DB와 Preview 전용
   read -r -s -p 'Preview DB URL: ' DATABASE_URL; printf '\n'
   read -r -s -p 'Preview PASSWORD_PEPPER: ' PASSWORD_PEPPER; printf '\n'
   export DATABASE_URL PASSWORD_PEPPER
+  test "$(db_fingerprint)" = "$(cat "$work/Preview.fingerprint")"
   node scripts/admin.mjs 검증관리자
 )
 ```
@@ -154,11 +180,19 @@ test -n "$before_id"
 test "$before_id" = "$current_id"
 printf '%s\n' "$before_id" > "$receipt_dir/daily-rollback-$sha.txt"
 RELEASE_DB_TARGET=Production migrate_target Production
+vercel inspect "$public" --scope "$scope" > "$work/current-production.txt" 2>&1
+current_id="$(rg -o 'dpl_[[:alnum:]]+' "$work/current-production.txt" | head -n 1)"
+test "$before_id" = "$current_id"
 
 production="$(vercel deploy "$work/upload" --scope "$scope" --prod --json \
   --meta "githubCommitRef=$branch" --meta "sourceCommit=$sha" | deployment)"
 printf 'Production %s @ %s\n' "$production" "$sha"
-vercel inspect "$public" --scope "$scope" | tee "$receipt_dir/daily-production-$sha.txt"
+vercel inspect "$production" --scope "$scope" > "$work/new-production.txt" 2>&1
+vercel inspect "$public" --scope "$scope" 2>&1 | tee "$receipt_dir/daily-production-$sha.txt"
+deployed_id="$(rg -o 'dpl_[[:alnum:]]+' "$work/new-production.txt" | head -n 1)"
+alias_id="$(rg -o 'dpl_[[:alnum:]]+' "$receipt_dir/daily-production-$sha.txt" | head -n 1)"
+test -n "$deployed_id"
+test "$deployed_id" = "$alias_id"
 curl -fsS "$public/" -o "$work/public-index.html"
 rg -Fq "$asset" "$work/public-index.html"
 for file in "$asset" admin-completions.js; do
@@ -171,7 +205,7 @@ done
 
 ## 롤백
 
-운영 코드만 이전 배포로 되돌린다. 새 테이블, 인덱스, 원본 기록, 기존 환경 설정은 보존한다.
+운영 코드를 이전 배포로 되돌린다. 새 테이블, 인덱스, 원본 기록, 기존 환경 설정은 보존한다. 이전 서버가 지하철 v6 규칙을 모르면 진행 중인 v6 플레이는 재개할 수 없다. 긴급 상황이 아니라면 진행이 적은 시간에 적용하고, 이미 저장된 v6 완주 기록은 DB에 남는다. 이전 서버의 랭킹은 자체 규칙 버전을 표시한다.
 
 ```bash
 vercel rollback "$(cat "$receipt_dir/daily-rollback-$sha.txt")" --scope "$scope"

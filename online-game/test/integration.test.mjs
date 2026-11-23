@@ -256,6 +256,13 @@ test('logged API results, cross-request cache, external calls and sanitized admi
   assert.equal(dashboard.body.metrics.external_calls,5);
   assert.equal((await admin('admin-audit?action=login&outcome=FAIL')).body.rows.every(row=>row.reason==='credentials'),true);
   assert.ok((await admin('admin-audit?page=2')).body.rows.length);
+  assert.ok(dashboard.body.nextCursor);
+  const cursorPage=await admin('admin-audit?'+new URLSearchParams({page:'2',before:dashboard.body.nextCursor}));
+  assert.equal(cursorPage.status,200);
+  assert.ok(cursorPage.body.rows.length);
+  const firstPageIds=new Set(dashboard.body.rows.map(row=>row.id));
+  assert.ok(cursorPage.body.rows.every(row=>!firstPageIds.has(row.id)));
+  assert.equal((await admin('admin-audit?before=invalid')).status,400);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM commute_audit WHERE id=$1',[miss.id])).rows[0].count,1);
   assert.equal((await admin('audit-prune')).status,403);
   assert.equal((await admin('audit-prune',undefined,{headers:{authorization:'Bearer '+config.cronSecret}})).status,200);
@@ -378,7 +385,12 @@ test('daily completion refresh follows committed records, KST, authorization and
     const stillSaved=await reconcile(5);
     assert.equal(stillSaved.matchesLastRun,false);
     await scheduled;
-    assert.equal((await admin('admin-completion-recalculate',{})).status,503);
+    const refused=await admin('admin-completion-recalculate',{});
+    assert.equal(refused.status,503);
+    const afterFailure=await overview();
+    assert.equal(afterFailure.latestRun.id,refused.body.runId);
+    assert.equal(afterFailure.latestRun.status,'failed');
+    assert.notEqual(afterFailure.runId,refused.body.runId);
   } finally {
     try {await lock.query('SELECT pg_advisory_unlock_all()');} finally {lock.release();}
   }
@@ -389,6 +401,13 @@ test('daily completion refresh follows committed records, KST, authorization and
   const unchanged=await admin('admin-completion-recalculate',{});
   assert.equal(unchanged.body.status,'unchanged');
 
+  const afterRecalculate=await overview();
+  assert.equal(afterRecalculate.latestRun.id,unchanged.body.runId);
+  assert.equal(afterRecalculate.latestRun.cause,'admin_recalculate');
+  assert.equal(afterRecalculate.latestRun.status,'unchanged');
+  assert.equal(afterFirst.latestRun.id,afterFirst.runId);
+  assert.equal(afterFirst.latestRun.cause,'record_saved');
+  assert.equal(afterFirst.latestRun.status,'success');
   const runs=(await admin('admin-completion-runs')).body.rows;
   const failed=runs.find(row=>row.play_id===duringFailure.id);
   assert.equal(failed.status,'failed');
@@ -428,5 +447,6 @@ test('daily completion refresh follows committed records, KST, authorization and
   const emptyDay=(await admin('admin-completions')).body;
   assert.equal(emptyDay.count,0);
   assert.equal(emptyDay.lastSuccessAt,null);
+  assert.equal(emptyDay.latestRun,null);
   assert.ok(emptyDay.byCourse.every(row=>row.fastest===null));
 });

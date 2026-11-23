@@ -17,9 +17,20 @@ const fields='a.id,a.at,a.user_id,u.nickname,a.action,a.method,a.http_status,a.o
   'a.play_id,a.cache_hit,a.external_calls,a.external_failures';
 const outcomes=['ALLOW','BLOCK','FAIL'];
 
+function requestCursor(value) {
+  if (!value) return undefined;
+  const [at,id,extra]=value.split(',');
+  const date=new Date(at);
+  if (extra!==undefined||!uuid(id)||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(at)
+    ||!Number.isFinite(date.getTime())||date.toISOString().slice(0,23)!==at.slice(0,23)) return undefined;
+  return [at,id];
+}
+
 export async function dashboard(db,url,actions) {
   const p=url.searchParams, from=p.get('from'), to=p.get('to'), action=p.get('action'),
     outcome=p.get('outcome'), user=p.get('user'), page=pageNumber(url);
+  const before=p.get('before'), cursor=requestCursor(before);
+  if (before!==null&&!cursor) return block(400,'filter');
   const now=new Date();
   const lastWeek=new Date(now.getTime()-7*86400000);
   const isoDay=/^\d{4}-\d{2}-\d{2}$/;
@@ -42,9 +53,16 @@ export async function dashboard(db,url,actions) {
   const {rows:byAction}=await db.query('SELECT a.action,count(*)::int AS count'+join+' GROUP BY a.action ORDER BY count DESC,a.action',data);
   const {rows:byUser}=await db.query('SELECT a.user_id,u.nickname,count(*)::int AS count'+join+
     ' GROUP BY a.user_id,u.nickname ORDER BY count DESC,a.user_id LIMIT 26 OFFSET $'+(data.length+1),[...data,(page-1)*25]);
-  const {rows}=await db.query('SELECT '+fields+join+' ORDER BY a.at DESC,a.id LIMIT 26 OFFSET $'+(data.length+1),[...data,(page-1)*25]);
-  return allow({users:users.total,metrics,byAction,byUser:byUser.slice(0,25),rows:rows.slice(0,25),
-    page,next:rows.length>25||byUser.length>25,actions},200,'admin_view');
+  const boundary=cursor ? ' AND (a.at < $'+(data.length+1)+' OR (a.at = $'+(data.length+1)+
+    ' AND a.id > $'+(data.length+2)+'))' : '';
+  const offset=cursor ? '' : ' OFFSET $'+(data.length+1);
+  const {rows}=await db.query("SELECT "+fields+
+    ",to_char(a.at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') || ',' || a.id AS cursor"+join+
+    boundary+' ORDER BY a.at DESC,a.id LIMIT 26'+offset,[...data,...(cursor ?? [(page-1)*25])]);
+  return allow({users:users.total,metrics,byAction,byUser:byUser.slice(0,25),
+    rows:rows.slice(0,25).map(({cursor,...row})=>row), page,next:rows.length>25||byUser.length>25,
+    nextCursor:rows.length>25?rows[24].cursor:null,
+    nextRequests:rows.length>25,nextUsers:byUser.length>25,actions},200,'admin_view');
 }
 
 export async function detail(db,url) {

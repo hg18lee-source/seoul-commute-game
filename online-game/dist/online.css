@@ -81,3 +81,37 @@ body.playing .top-right a { display: none; }
 #account-form .account-error { color: #ffb7a9; font-weight: 700; }
 #account-form .account-error:empty { display: none; }
 #account-form [aria-invalid="true"] { outline: 2px solid #ee9a89; outline-offset: 2px; }
+
+.admin main { max-width: 1120px; text-align: left; }
+.admin [hidden] { display: none !important; }
+.admin section { margin: .85rem 0; background: #fffdf5; min-width: 0; }
+.admin-tabs { display: flex; flex-wrap: wrap; gap: .55rem; margin: 1.2rem 0; }
+.admin button[aria-current="true"], #completion-recalculate {
+  background: #214437; border-color: #214437; color: #fffdf5;
+}
+.admin button:focus-visible, .admin a:focus-visible, .admin .table-wrap:focus-visible {
+  outline: 2px solid #31664d; outline-offset: 3px;
+}
+.admin-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .7rem; }
+.admin-metrics > div { background: #f1f0e3; border-radius: .5rem; padding: .8rem; }
+.admin-metrics dt { font-weight: 600; }
+.admin-metrics dd { margin: .3rem 0 0; font-size: clamp(1.1rem, 3vw, 1.55rem); font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+#completion-updated { font-size: 1rem; }
+.admin-flow { display: flex; flex-wrap: wrap; gap: .4rem 1rem; padding: 0; list-style: none; font-weight: 600; }
+.admin-flow li:not(:last-child)::after { content: "→"; margin-left: 1rem; }
+.admin-facts { display: grid; grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr); gap: .35rem .75rem; }
+.admin-facts dt { font-weight: 600; }
+.admin-facts dd { margin: 0; overflow-wrap: anywhere; }
+.admin-id { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.admin-badge { display: inline-block; padding: .1rem .45rem; border-radius: .3rem; background: #e5ecdf; font-weight: 700; }
+.admin .table-wrap { max-width: 100%; overflow-x: auto; }
+.admin td, .admin li { overflow-wrap: anywhere; }
+.admin td button { white-space: nowrap; }
+.admin input, .admin select { box-sizing: border-box; max-width: 100%; }
+.admin form label { min-width: 0; max-width: 100%; }
+.admin dialog { box-sizing: border-box; width: min(94vw, 48rem); max-height: 88vh; overflow: auto; background: #fffdf5; color: #173739; }
+.admin summary { cursor: pointer; }
+@media (max-width: 480px) {
+  .admin-facts { grid-template-columns: minmax(0, 1fr); }
+  .admin-facts dd { margin-bottom: .35rem; }
+}

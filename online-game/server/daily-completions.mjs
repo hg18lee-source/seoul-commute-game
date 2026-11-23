@@ -35,17 +35,23 @@ function summarize(rows) {
 }
 
 export async function completionOverview(db, date) {
-  const { rows: [{ totals, id, ended_at, summary: previous }] } = await db.query(filter + `
-    SELECT totals, last.id, last.ended_at, last.summary
+  const { rows: [{ totals, id, ended_at, summary: previous, latest_run: latestRun }] } = await db.query(filter + `
+    SELECT totals, last.id, last.ended_at, last.summary, recent.latest_run
     FROM (SELECT coalesce(jsonb_agg(t), '[]'::jsonb) AS totals FROM (${fastestByCourse}) t) a
     LEFT JOIN LATERAL (
       SELECT id, ended_at, summary FROM commute_daily_completion_runs
       WHERE target_date = $1 AND status IN ('success','unchanged')
       ORDER BY sequence DESC LIMIT 1
-    ) last ON true`, plan(date));
+    ) last ON true
+    LEFT JOIN LATERAL (
+      SELECT jsonb_build_object('id', id, 'cause', cause, 'status', status,
+        'started_at', started_at, 'ended_at', ended_at) AS latest_run
+      FROM commute_daily_completion_runs WHERE target_date = $1
+      ORDER BY sequence DESC LIMIT 1
+    ) recent ON true`, plan(date));
   const summary = summarize(totals);
   const matchesLastRun = isDeepStrictEqual(previous,summary);
-  return { date, zone, ...summary, lastSuccessAt: ended_at, runId: id, matchesLastRun, courses };
+  return { date, zone, ...summary, lastSuccessAt: ended_at, runId: id, matchesLastRun, latestRun, courses };
 }
 
 const size = 20;

@@ -1,9 +1,11 @@
-import { BUS_STOPS, CHECKPOINTS, COURSE, COURSES, TRAIN_LINES } from '../dist/journey.js';
+import { BUS_COURSE, BUS_STOPS, CHECKPOINTS, COURSE, COURSES, TRAIN_LINES, RIGHT_EXIT_RULES, insideRightStationExit } from '../dist/journey.js';
 
 export const legacyRules = 'gongdeok-movement-v2-online-1';
 export const previousRules = 'gongdeok-chungjeongno-walk-3';
-export const rules = 'gongdeok-chungjeongno-walk-4';
-export const ruleVersions = {[rules]:'공덕 → 충정로 · 순수 시간 기록',[previousRules]:'기존 충정로 도보 코스',[legacyRules]:'이전 코스'};
+export const originalExitRules = 'gongdeok-chungjeongno-walk-4';
+export const rules = RIGHT_EXIT_RULES;
+export const rankingRules = {[COURSE.id]:[rules,originalExitRules],[BUS_COURSE.id]:[originalExitRules]};
+export const ruleVersions = {[rules]:'오른쪽 출구 동선',[originalExitRules]:'기존 출구 동선',[previousRules]:'기존 충정로 도보 코스',[legacyRules]:'이전 코스'};
 export const courses = COURSES;
 export const expiryMs = 10000;
 const lines = TRAIN_LINES;
@@ -90,9 +92,14 @@ function transition(a,b,stageAt,course,version) {
           &&board(a,b,stageAt,'train',direction,index,course);
       }
       const stationExit=CHECKPOINTS.stationExit;
+      if (a.station===course.destination) {
+        const exitContact=version===RIGHT_EXIT_RULES
+          ? a.line===course.line&&insideRightStationExit(a.x,a.z)
+          : near(a,stationExit.platform.x,stationExit.platform.z);
+        return exitContact&&b.stage==='exit-hall'&&sameStops(a,b)
+          &&spawn(b,stationExit.hall.x,stationExit.hall.z);
+      }
       if (!near(a,stationExit.platform.x,stationExit.platform.z)) return false;
-      if (a.station===course.destination) return b.stage==='exit-hall'&&sameStops(a,b)
-        &&spawn(b,stationExit.hall.x,stationExit.hall.z);
       if (a.station==='충정로') return b.stage==='hall'&&b.line!==a.line&&b.station===a.station
         &&b.busIndex===a.busIndex&&spawn(b,0,14);
       return a.station==='공덕'&&b.stage==='street'&&sameStops(a,b)&&spawn(b,-5,-20);

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { initialState } from '../server/rules.mjs';
-import { BUS_COURSE, COURSE } from '../dist/journey.js';
+import { BUS_COURSE, COURSE, RIGHT_EXIT_RULES, RIGHT_EXIT_PATH } from '../dist/journey.js';
 
 export async function journey(client,setTime,start,course,{pause=false, secondRecord=false, collisions=false, cancelAfterCollisions=false}={}) {
-  const {body:{id},status}=await client('play-start',{course});
+  const {body:{id},status}=await client('play-start',{course,exitRules:RIGHT_EXIT_RULES});
   assert.equal(status,201);
   let seq=0, point=initialState(course).point, elapsed=0, paused=0;
   const wall=()=>Math.round((elapsed+paused)*1000);
@@ -69,7 +69,8 @@ export async function journey(client,setTime,start,course,{pause=false, secondRe
     await vehicle({index:COURSE.destinationIndex,open:true});
     await tick(53,0,-11);
     await stage({stage:'platform',station:COURSE.destination,x:0,z:8,ride:null});
-    await tick(60,0,-24);
+    await tick(54.3,RIGHT_EXIT_PATH[1].x,RIGHT_EXIT_PATH[1].z);
+    await tick(60,RIGHT_EXIT_PATH[2].x,RIGHT_EXIT_PATH[2].z);
     await stage({stage:'exit-hall',x:0,z:14});
     await tick(68,0,2);
     await stage({stage:'exit-street',x:0,z:34});

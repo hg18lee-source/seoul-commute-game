@@ -116,3 +116,9 @@ Preview와 Production의 비밀을 각각 Vercel **Settings → Environment Vari
 Preview는 `vercel deploy --environment preview`로 만들고 위 검증표를 실행합니다. Production 배포와 재배포는 검증한 소스에서 `vercel deploy --prod`를 사용합니다. Vercel **Settings → Deployment Protection**에서 Vercel Authentication의 범위를 **Standard Protection**으로 두고, **Settings → Domains**의 Production 기본 도메인을 Vercel 세션이 없는 브라우저에서 확인합니다. 최근 배포의 고유 URL은 보호될 수 있습니다. Production에서 검증표를 다시 실행한 뒤 확인한 Production 도메인, 관리자 경로와 결과를 이 문서에 기록합니다. [Vercel 배포 보호](https://vercel.com/docs/deployment-protection)
 
 Neon Free는 공식 요금표상 기간 제한이나 카드 등록 없이 사용할 수 있습니다. 프로젝트별 월 100 CU시간과 저장 1GB를 제공하며, 유휴 컴퓨트가 일시정지됐다가 요청 시 다시 시작되면 첫 DB 호출이 늦어질 수 있습니다. 할당량을 소진하면 DB를 쓰는 가입·로그인·기록 저장·관리 기능이 영향을 받을 수 있습니다. Vercel Hobby에서도 사용량 한도 소진 시 해당 기능 이용이 제한될 수 있습니다. 앱 롤백 가능 여부는 배포 보존 상태와 DB 스키마 호환성을 함께 확인합니다. [Neon Free](https://neon.com/pricing) · [Neon 유휴 컴퓨트](https://neon.com/blog/how-to-reduce-postgres-compute-costs-as-you-scale) · [Vercel Hobby](https://vercel.com/docs/plans/hobby)
+
+## 충정로역 최종 하차 안내와 기록 규칙
+
+5호선 공덕 → 충정로 코스에서 **충정로 최종 하차 후**에만 오른쪽 출구 안내가 나타납니다. 하차 지점의 전방은 월드의 −Z, 화면 오른쪽은 +X입니다. 현행 승강장 모델의 중앙 구조 기둥은 x=0이고 안전선은 x=±4.6입니다. 새 동선은 하차 지점 (0, 8)에서 (2.25, 5.5)로 옮겨 기둥열을 피한 뒤 (2.25, −24)의 출구로 이어집니다. 반경 1.25m는 안전선을 넘지 않으며 NPC 순찰 범위 밖입니다. 다른 역과 환승 통로에는 이 표시를 적용하지 않습니다.
+
+출구까지 걷는 거리가 기록에 영향을 줄 수 있어, 새 안내를 지원하는 지하철 클라이언트의 플레이에는 `gongdeok-chungjeongno-walk-5`를 발급합니다. 이전 클라이언트와 이미 발급된 플레이는 기존 출구 판정을 사용합니다. 버스는 `gongdeok-chungjeongno-walk-4`를 유지합니다. 지하철 랭킹의 **출구 동선**에서 기존 기록을 선택할 수 있습니다. DB 마이그레이션과 기록 변환은 필요하지 않습니다.

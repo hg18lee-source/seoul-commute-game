@@ -15,6 +15,16 @@ export const CHECKPOINTS = Object.freeze({
   busOfficeStart: Object.freeze({office:Object.freeze({x:0,z:14})}),
 });
 
+export const RIGHT_EXIT_RULES = 'gongdeok-chungjeongno-walk-5';
+export const RIGHT_STATION_EXIT = Object.freeze({x:2.25,z:-24,radius:1.25});
+export const insideRightStationExit = (x,z) =>
+  Math.hypot(x-RIGHT_STATION_EXIT.x,z-RIGHT_STATION_EXIT.z)<RIGHT_STATION_EXIT.radius;
+export const RIGHT_EXIT_PATH = Object.freeze([
+  CHECKPOINTS.trainAlight.platform,
+  Object.freeze({x:RIGHT_STATION_EXIT.x,z:5.5}),
+  RIGHT_STATION_EXIT,
+]);
+
 export const TRAIN_LINES = Object.freeze({
   '5': Object.freeze(['마포', '공덕', '애오개', '충정로', '서대문']),
   '2': Object.freeze(['아현', '충정로', '시청', '을지로입구']),

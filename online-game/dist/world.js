@@ -3,7 +3,7 @@ import { CommuterMotion } from "./hero/motion.js";
 import { createNpc, moveNpc } from './hero/npc.js';
 import { entranceHeight, entranceBlocked, gateZ, placeGate } from './transit-scene.js';
 import { populateGongdeok } from "./gongdeok-street.js";
-import { BUS_COURSE, CHECKPOINTS, COURSE } from './journey.js';
+import { BUS_COURSE, CHECKPOINTS, COURSE, RIGHT_EXIT_PATH, RIGHT_STATION_EXIT } from './journey.js';
 
 const C={pavement:0xd8d2bb,road:0x7d8881,cream:0xe8e5ce,ink:0x294b43,green:0x527f56,glass:0x628183,wood:0x9c7953};
 const mats=new Map();
@@ -80,7 +80,51 @@ export class World{
   cube(this.root,7.8,.12,.54,0x959991,0,3.43,z);
   cube(this.root,5.2,.075,.22,0xe9efdf,0,3.35,z,{emissive:0xebefdf,emissiveIntensity:.64});
  }
- cube(this.root,10,.4,65,0xd4d2b9,0,.1,0);for(const s of [-1,1]){cube(this.root,.32,.02,62,0xe6cb66,s*4.6,.32,0);cube(this.root,1,.2,68,0x4e5e51,s*9,-.1,0);for(let i=0;i<11;i++)cube(this.root,2.3,.12,.15,0x35463b,s*9,-.02,-30+i*6);const train=new THREE.Group();this.root.add(train);train.position.x=s*9;this.platformTrains.push(train);cube(train,5,3.6,58,0xe2e4d7,0,1.6,-3);cube(train,5.05,.22,58,Number(data.line)===5?0x9274b1:0x679156,0,1.1,-3);for(let i=0;i<11;i++){cube(train,.05,1,2.3,0x5a7870,-s*2.53,2,-28+i*5);cube(train,.06,2.4,1.2,0x859d86,-s*2.54,1.4,-25+i*5);}const neighbor=data.neighbors?.[s===-1?0:1]||'다음 역';sign(this.root,`${s===-1?'←':'→'}  ${neighbor} 방면`,6,.8,s*5.4,3.7,-3,Number(data.line)===5?'#80679b':'#497a50');if(s===COURSE.direction)this.spot('train-board','노란 표시에서 탑승',CHECKPOINTS.trainBoard.platform.x,CHECKPOINTS.trainBoard.platform.z,{direction:s,boarding:true});else this.spot(s===-1?'train-left':'train-right',`${neighbor} 방면 탑승`,s*4,0,{direction:s});}for(let i=0;i<5;i++){cube(this.root,.6,6,.6,0xc9cbb7,0,3,-24+i*13);sign(this.root,`${data.station}   ${data.line}`,2,.55,0,2.3,-23.65+i*13,'#e7e8d5','#45634a');}bench(this.root,1,17);sign(this.root,`${data.station}역`,5,1,0,4,13,'#4c7152');this.spot('exit','역 출구',0,CHECKPOINTS.stationExit.platform.z,data.station===COURSE.destination?{alighting:true}:{});if(data.station===COURSE.destination)this.spot('platform-alight','하차 위치',0,CHECKPOINTS.trainAlight.platform.z,{alighting:true});this.bounds={minX:-4.45,maxX:4.45,minZ:-25,maxZ:25};this.people(7,{x:3.6,z:35,offset:-3,roamMultiplier:3});}
+ cube(this.root,10,.4,65,0xd4d2b9,0,.1,0);for(const s of [-1,1]){cube(this.root,.32,.02,62,0xe6cb66,s*4.6,.32,0);cube(this.root,1,.2,68,0x4e5e51,s*9,-.1,0);for(let i=0;i<11;i++)cube(this.root,2.3,.12,.15,0x35463b,s*9,-.02,-30+i*6);const train=new THREE.Group();this.root.add(train);train.position.x=s*9;this.platformTrains.push(train);cube(train,5,3.6,58,0xe2e4d7,0,1.6,-3);cube(train,5.05,.22,58,Number(data.line)===5?0x9274b1:0x679156,0,1.1,-3);for(let i=0;i<11;i++){cube(train,.05,1,2.3,0x5a7870,-s*2.53,2,-28+i*5);cube(train,.06,2.4,1.2,0x859d86,-s*2.54,1.4,-25+i*5);}const neighbor=data.neighbors?.[s===-1?0:1]||'다음 역';sign(this.root,`${s===-1?'←':'→'}  ${neighbor} 방면`,6,.8,s*5.4,3.7,-3,Number(data.line)===5?'#80679b':'#497a50');if(data.rightExit)continue;if(s===COURSE.direction)this.spot('train-board','노란 표시에서 탑승',CHECKPOINTS.trainBoard.platform.x,CHECKPOINTS.trainBoard.platform.z,{direction:s,boarding:true});else this.spot(s===-1?'train-left':'train-right',`${neighbor} 방면 탑승`,s*4,0,{direction:s});}for(let i=0;i<5;i++){cube(this.root,.6,6,.6,0xc9cbb7,0,3,-24+i*13);sign(this.root,`${data.station}   ${data.line}`,2,.55,0,2.3,-23.65+i*13,'#e7e8d5','#45634a');}bench(this.root,1,17);sign(this.root,`${data.station}역`,5,1,0,4,13,'#4c7152');if(data.rightExit)this.rightExitGuide();else{this.spot('exit','역 출구',0,CHECKPOINTS.stationExit.platform.z,data.station===COURSE.destination?{alighting:true}:{});if(data.station===COURSE.destination)this.spot('platform-alight','하차 위치',0,CHECKPOINTS.trainAlight.platform.z,{alighting:true});}this.bounds={minX:-4.45,maxX:4.45,minZ:-25,maxZ:25};this.people(7,{x:3.6,z:35,offset:-3,roamMultiplier:3});}
+ rightExitGuide() {
+  const arrows=new THREE.Shape();
+  arrows.moveTo(0,.54);
+  arrows.lineTo(-.29,.13);
+  arrows.lineTo(-.115,.13);
+  arrows.lineTo(-.115,-.4);
+  arrows.lineTo(.115,-.4);
+  arrows.lineTo(.115,.13);
+  arrows.lineTo(.29,.13);
+  arrows.closePath();
+  const geometry=new THREE.ShapeGeometry(arrows);
+  geometry.rotateX(-Math.PI/2);
+  const positions=[];
+  for(let i=1;i<RIGHT_EXIT_PATH.length;i++){
+    const from=RIGHT_EXIT_PATH[i-1], to=RIGHT_EXIT_PATH[i];
+    const dx=to.x-from.x,dz=to.z-from.z;
+    const count=Math.ceil(Math.hypot(dx,dz)/2.25);
+    const yaw=Math.atan2(-dx,-dz);
+    for(let j=0;j<count;j++){
+      const f=(j+.5)/count;
+      positions.push([from.x+dx*f,from.z+dz*f,yaw]);
+    }
+  }
+  const trail=new THREE.InstancedMesh(geometry,mat(0x0d665c,{emissive:0x104c44,emissiveIntensity:.4}),positions.length);
+  trail.name='출구 바닥 화살표';
+  const pose=new THREE.Object3D();
+  for(const [i,[x,z,yaw]] of positions.entries()){
+    pose.position.set(x,.323,z);
+    pose.rotation.y=yaw;
+    pose.updateMatrix();
+    trail.setMatrixAt(i,pose.matrix);
+  }
+  this.root.add(trail);
+
+  const {x,z,radius}=RIGHT_STATION_EXIT;
+  const portal=new THREE.Group();
+  portal.name='출구로 이동';
+  portal.position.set(x,.331,z);
+  const ring=new THREE.Mesh(new THREE.RingGeometry(radius-.09,radius,48),mat(0x176c5c,{side:THREE.DoubleSide,emissive:0x296b59}));
+  ring.rotation.x=-Math.PI/2;
+  portal.add(ring);
+  sign(portal,'출구로 이동',2.1,.35,0,1.14,0,'#164e44','#eefff4');
+  this.root.add(portal);
+ }
  vehicle(data){const isBus=data.type==='bus';this.floor(isBus?5:6,30,0xa6b09a);for(const x of [-3.1,3.1]){cube(this.root,.12,.85,30,0xe5e3ce,x,.4,0);for(let i=0;i<8;i++){cube(this.root,.1,1.5,.12,0x899e89,x,1.6,-13+i*3.7);cube(this.root,.12,.12,3.7,0xc4cbb6,x,2.5,-13+i*3.7);}}for(let i=0;i<7;i++)for(const side of [-1,1]){const z=-10+i*3.2;cube(this.root,.9,.3,.95,isBus?0x729683:0x8597ab,side*1.45,.46,z);cube(this.root,.16,.78,.95,isBus?0x658773:0x7b899b,side*1.94,.96,z);this.spot(`seat-${side}-${i}`,'좌석에 앉기',side*1.45,z,{seat:true,side,seatX:side*1.45,seatYaw:side===1?Math.PI/2:-Math.PI/2});}for(let z=-10;z<=10;z+=5)cylinder(this.root,.035,2.7,0xbecab4,.7,1.35,z);cube(this.root,.05,.05,26,0xc4d0be,.7,2.6,0);for(let z=-10;z<=10;z+=2.5){const ring=new THREE.Mesh(new THREE.TorusGeometry(.13,.023,6,12),mat(0xe8ebd4));ring.position.set(.7,1.78,z);this.root.add(ring);cube(this.root,.025,.72,.025,0xd5d7c7,.7,2.24,z);}this.vehicleSignLine=isBus?'7016':`${data.line}호선`;this.vehicleSignColor=isBus?'#385c48':'#4a6c51';this.vehicleSignText='';this.vehicleSign=null;this.setVehicleDestination('다음 '+(data.next||'다음 역'));this.spot('alight','열린 문으로 하차',0,-10.9,{alighting:true});if(isBus){cube(this.root,.3,.4,.12,0xd85c45,1.4,1.3,-5);sign(this.root,'STOP',.5,.25,1.4,1.7,-4.9,'#a94e3e');this.spot('bell','하차 벨 누르기',1.1,-5);}for(let i=0;i<10;i++){const g=new THREE.Group();g.position.set(i%2?-10:10,0,-30+i*9);this.root.add(g);cube(g,5,12+i%3*5,6,[0xbac6ad,0xd0ceb5,0x9db8ac][i%3],0,6,0);tree(g,2,3);this.cityMotion.push(g);}this.bounds={minX:-1.9,maxX:1.9,minZ:-11,maxZ:11};this.people(isBus?5:7,{x:1.3,z:19,offset:0});if(!isBus){this.npcs.forEach((npc,i)=>{npc.stationary=true;if(i<3){npc.sitting=true;const side=i===1?1:-1,z=[-6.8,-3.6,2.8][i];npc.g.position.set(side*1.45,0,z);npc.animator.reset(side===1?Math.PI/2:-Math.PI/2);}else npc.g.position.set((i%2?-.45:.45),0,-2+i*2);});}}
  office(data){this.street({station:data.station,line:'2'});this.spots=this.spots.filter(s=>{s.ring.visible=false;return false;});cube(this.root,16,22,9,0xb6c6bc,0,11,-33);cube(this.root,12,16,.1,0x668781,0,12,-28.4,{roughness:.4,metalness:.15});for(let x=-5;x<=5;x+=2)cube(this.root,.08,16,.15,0xd7ddcc,x,12,-28.25);cube(this.root,4,4,.1,0x294c41,0,2,-28.2);sign(this.root,'SEOUL WORKS',9,1,0,5.2,-28,'#d4ddca','#3d6651');const g=new THREE.Group();g.position.set(0,1.7,-26);const ring=new THREE.Mesh(new THREE.TorusGeometry(1.2,.1,7,36),new THREE.MeshStandardMaterial({color:0xef655a,emissive:0xdc483f,emissiveIntensity:1.5,roughness:.5}));ring.scale.y=1.35;g.add(ring);const fill=new THREE.Mesh(new THREE.CircleGeometry(1.1,32),new THREE.MeshBasicMaterial({color:0xf17466,transparent:true,opacity:.25,side:THREE.DoubleSide}));fill.scale.y=1.35;g.add(fill);this.root.add(g);this.portal=g;sign(this.root,'직장  ·  도착',3.2,.65,0,3.8,-25.95,'#d46150');this.spot('finish','직장에 도착하기',0,-26);this.bounds={minX:-9,maxX:9,minZ:-28,maxZ:34};}
  nearest(){let near=null,dist=2.35;for(const s of this.spots){const d=Math.hypot(this.hero.position.x-s.x,this.hero.position.z-s.z);if(d<dist){near=s;dist=d;}}return near;}

@@ -123,6 +123,7 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
     $('record-note').textContent=ranked
       ?'내 기록은 색상과 굵은 글씨로 표시됩니다.'
       :'최근 완주 기록부터 표시합니다. 완료 날짜와 시각은 순위표에서 제외했습니다.';
+    const ruleFilter=element('select');
     let revision=0;
     async function load(page=1) {
       const requested=++revision;
@@ -130,7 +131,10 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
       pages.replaceChildren();
       try {
         const query=new URLSearchParams({page});
-        if (ranked) query.set('course',filter.value);
+        if (ranked) {
+          query.set('course',filter.value);
+          if (ruleFilter.value) query.set('rules',ruleFilter.value);
+        }
         const result=await api((ranked?'ranking?':'records?')+query);
         if (requested!==revision||!rows.isConnected) return;
         rows.replaceChildren();
@@ -158,15 +162,28 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
       } catch (error) {if (requested===revision&&rows.isConnected) showError(error,status);}
     }
     if (ranked) {
-      catalog().then(({courses:list})=>{
+      catalog().then(({courses:list,rankingRules={},ruleVersions={}})=>{
         if (!status.isConnected) return;
         for (const [id,course] of Object.entries(list)) filter.add(new Option(course.label,id));
         const courseLabel=element('label','코스');
         filter.className='record-select';
         courseLabel.append(filter);
         $('record-filter').append(courseLabel);
-        filter.onchange=()=>load();
-        load();
+        const rulesLabel=element('label','출구 동선');
+        ruleFilter.className='record-select';
+        ruleFilter.setAttribute('aria-label','출구 동선');
+        rulesLabel.append(ruleFilter);
+        $('record-filter').append(rulesLabel);
+        const chooseVersion=()=>{
+          const versions=rankingRules[filter.value]??[];
+          ruleFilter.replaceChildren(...(versions.length>1
+            ? versions.map(version=>new Option(ruleVersions[version]??version,version)) : []));
+          rulesLabel.hidden=versions.length<=1;
+          load();
+        };
+        filter.onchange=chooseVersion;
+        ruleFilter.onchange=()=>load();
+        chooseVersion();
       }).catch(error=>{if (status.isConnected) showError(error,status);});
     } else load();
   }

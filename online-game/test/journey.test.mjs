@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BUS_COURSE, BUS_STOPS, COURSE, COURSES, TRAIN_LINES } from '../dist/journey.js';
-import { initialState, rules, validateBatch } from '../server/rules.mjs';
+import { BUS_COURSE, BUS_STOPS, COURSE, COURSES, TRAIN_LINES, RIGHT_EXIT_PATH, RIGHT_STATION_EXIT } from '../dist/journey.js';
+import { World } from '../dist/world.js';
+import { Group, Matrix4, Vector3 } from '../dist/vendor/three.module.js';
+import { start, ranking } from '../server/plays.mjs';
+import { initialState, originalExitRules, rules, validateBatch } from '../server/rules.mjs';
 
 test('the single canonical course validates from Gongdeok entrance through Chungjeongno to office', () => {
   assert.deepEqual(Object.keys(COURSES), [COURSE.id,BUS_COURSE.id]);
@@ -51,7 +54,8 @@ test('the single canonical course validates from Gongdeok entrance through Chung
   vehicle({index:COURSE.destinationIndex,open:true});
   moveTo(53,0,-11);
   change({stage:'platform',station:COURSE.destination,x:0,z:8,ride:null});
-  moveTo(60,0,-24);
+  moveTo(54.3,RIGHT_EXIT_PATH[1].x,RIGHT_EXIT_PATH[1].z);
+  moveTo(60,RIGHT_STATION_EXIT.x,RIGHT_STATION_EXIT.z);
   change({stage:'exit-hall',x:0,z:14});
   moveTo(68,0,2);
   change({stage:'exit-street',x:0,z:34});
@@ -153,4 +157,70 @@ test('collision penalty increases record time without changing player position o
   const forgedSample=validateBatch(play,{wall:0,events:[{kind:'sample',wall:0,
     after:{...penalized,penalty:11}}]},0);
   assert.equal(forgedSample.reason,'movement_or_pause');
+});
+
+test('platform transition validates the exact exit area without confusing it with a transfer', () => {
+  const transition = ({ x, z, line = COURSE.line, station = COURSE.destination, version = rules, target = 'exit-hall', nextLine = line }) => {
+    const current = initialState();
+    const before = { ...current.point, stage:'platform', station, line, x, z };
+    const after = { ...before, stage:target, x:0, z:14, line:nextLine };
+    const play = { course:COURSE.id, rules:version, start_ms:0, seen_ms:0, paused_ms:0, pause_ms:null,
+      state:{ ...current, point:before } };
+    return validateBatch(play,{wall:0,events:[{kind:'stage',wall:0,before,after}]},0);
+  };
+  const { x, z, radius } = RIGHT_STATION_EXIT;
+  assert.equal(transition({x:0,z}).reason,'stage_transition');
+  assert.equal(transition({x:x+radius+.01,z}).reason,'stage_transition');
+  assert.equal(transition({x,z,line:'2'}).reason,'stage_transition');
+  assert.equal(transition({x,z,station:'애오개'}).reason,'stage_transition');
+  assert.ok(transition({x,z}).state);
+  assert.ok(transition({x:0,z,version:originalExitRules}).state);
+  assert.ok(transition({x:0,z,line:'2',nextLine:'5',target:'hall',version:originalExitRules,station:'충정로'}).reason);
+});
+
+test('right-side guide uses the safe floor, retains pillars, and is removed on scene cleanup', t => {
+  const oldDocument=globalThis.document;
+  t.after(()=>{globalThis.document=oldDocument;});
+  globalThis.document={createElement:()=>({getContext:()=>({fillRect(){},fillText(){}})})};
+  const world=Object.assign(Object.create(World.prototype),{
+    root:new Group(),scene:new Group(),spots:[],npcs:[],platformTrains:[],mode:'platform',
+    people(_count, area){this.crowdLimit=area.offset-area.z/2;},
+  });
+  world.scene.add(world.root);
+  world.platform({station:COURSE.destination,line:COURSE.line,rightExit:true});
+  const {x,z}=RIGHT_STATION_EXIT;
+  const portal=world.root.getObjectByName('출구로 이동');
+  assert.equal(portal.position.x,x);
+  assert.equal(portal.position.z,z);
+  assert.ok(portal.position.z+RIGHT_STATION_EXIT.radius<world.crowdLimit);
+  assert.ok(portal.position.x+RIGHT_STATION_EXIT.radius<4.45);
+  assert.deepEqual(world.spots,[]);
+  const trail=world.root.getObjectByName('출구 바닥 화살표');
+  const pillars=world.root.children.filter(object=>object.geometry?.parameters?.height===6);
+  assert.equal(pillars.length,5);
+  assert.ok(trail.count>10);
+  const matrix=new Matrix4();
+  for(let i=0;i<trail.count;i++){
+    trail.getMatrixAt(i,matrix);
+    const p=new Vector3().setFromMatrixPosition(matrix);
+    assert.ok(p.x>=0 && p.x<4.45 && p.y>.3);
+    assert.ok(pillars.every(pillar=>Math.hypot(pillar.position.x-p.x,pillar.position.z-p.z)>.9));
+  }
+  world.clear();
+  assert.equal(world.scene.getObjectByName('출구 바닥 화살표'),undefined);
+  world.platform({station:COURSE.origin,line:COURSE.line});
+  assert.ok(world.spots.some(spot=>spot.id==='train-board'));
+  assert.equal(world.root.getObjectByName('출구로 이동'),undefined);
+});
+
+test('new rail starts and default ranking use the new rule while bus and old rail clients keep the prior rule', async () => {
+  const ctx={user:{id:'local-player'}};
+  const db={query:async()=>({rows:[]})};
+  for(const [course,exitRules,expected] of [
+    [COURSE.id,rules,rules], [COURSE.id,undefined,originalExitRules], [BUS_COURSE.id,rules,originalExitRules],
+  ]) assert.equal((await start(db,ctx,{course,exitRules},0)).body.rules,expected);
+  const rank=(course,version='')=>ranking(db,ctx,new URL('http://127.0.0.1/?course='+course+version));
+  assert.equal((await rank(COURSE.id)).body.rules,rules);
+  assert.equal((await rank(COURSE.id,'&rules='+originalExitRules)).body.rules,originalExitRules);
+  assert.equal((await rank(BUS_COURSE.id)).body.rules,originalExitRules);
 });

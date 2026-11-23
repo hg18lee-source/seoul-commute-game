@@ -4,7 +4,7 @@ import { authentication } from './auth.mjs';
 import { audit, dashboard, detail, prune } from './audit.mjs';
 import { transaction } from './db.mjs';
 import { advance, allow, block, fail, ranking, records, start } from './plays.mjs';
-import { courses, rules, ruleVersions } from './rules.mjs';
+import { courses, rankingRules, rules, ruleVersions } from './rules.mjs';
 import { transit } from './transit.mjs';
 import { adminPage } from './admin-page.mjs';
 
@@ -112,7 +112,7 @@ export function app(pool,config,{fetcher=fetch,clock=Date.now}={}) {
         await db.query('UPDATE commute_sessions SET revoked_at=clock_timestamp() WHERE token_hash=$1',[ctx.tokenHash]);
         await db.query("UPDATE commute_plays SET status='cancelled',invalid_reason='logout' WHERE session_hash=$1 AND status='active'",[ctx.tokenHash]);
         return {...allow({},200,'logout'),cookie:auth.clear};
-      case 'courses':return allow({courses,rules,ruleVersions});
+      case 'courses':return allow({courses,rules,ruleVersions,rankingRules});
       case 'records':return records(db,ctx,url);
       case 'ranking':return ranking(db,ctx,url);
       case 'play-start':return start(db,ctx,body,clock());

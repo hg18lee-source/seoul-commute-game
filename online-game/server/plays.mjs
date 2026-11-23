@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { courses, expiryMs, initialState, rules, ruleVersions, validateBatch } from './rules.mjs';
+import { courses, expiryMs, initialState, originalExitRules, rankingRules, rules, ruleVersions, validateBatch } from './rules.mjs';
 
 const recordPageSize = 6;
 
@@ -13,12 +13,14 @@ function date(ms) {return new Date(ms);}
 
 export async function start(db, ctx, body, now) {
   if (!knownCourse(body.course)) return block(400,'course');
+  // A tab running the older client still uses the original portal and rule.
+  const version=courses[body.course].transport==='train'&&body.exitRules===rules?rules:originalExitRules;
   const id=randomUUID();
   await db.query(
     "INSERT INTO commute_plays(id,user_id,session_hash,course,rules,status,started_at,seen_at,state) VALUES($1,$2,$3,$4,$5,'active',$6,$6,$7)",
-    [id,ctx.user.id,ctx.tokenHash,body.course,rules,date(now),initialState(body.course)]);
+    [id,ctx.user.id,ctx.tokenHash,body.course,version,date(now),initialState(body.course)]);
   ctx.playId=id;
-  return allow({id,course:body.course,rules},201,'play_started');
+  return allow({id,course:body.course,rules:version},201,'play_started');
 }
 
 async function end(db,id,status,reason) {
@@ -92,7 +94,7 @@ export function pageNumber(url) {
 export async function ranking(db, ctx, url) {
   const course=url.searchParams.get('course'), page=pageNumber(url);
   if (!knownCourse(course)) return block(400,'course');
-  const version=url.searchParams.get('rules')??rules;
+  const version=url.searchParams.get('rules')??rankingRules[course][0];
   if(!Object.hasOwn(ruleVersions,version)) return block(400,'rules');
   const {rows}=await db.query(
     'WITH best AS (SELECT user_id,min(tenths) AS tenths FROM commute_records WHERE course=$1 AND rules=$2 GROUP BY user_id), '+

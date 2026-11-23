@@ -3,7 +3,7 @@ import { loadCommuter, movementSpeed } from './hero/motion.js';
 import { World } from './world.js';
 import { api, createPlay, currentAccount, element, setAccount } from './online.js';
 import { accountInterface } from './account-ui.js';
-import { BUS_COURSE, BUS_STOPS, CHECKPOINTS, COURSE, COURSES, TRAIN_LINES } from './journey.js';
+import { BUS_COURSE, BUS_STOPS, CHECKPOINTS, COURSE, COURSES, TRAIN_LINES, RIGHT_EXIT_RULES, insideRightStationExit } from './journey.js';
 
 const $ = id => document.getElementById(id);
 const keys = new Set();
@@ -99,7 +99,7 @@ async function start(course) {
     }
     if(actions&&!actions.isConnected)return;
     status.textContent='공식 플레이를 발급하는 중…';
-    issued=await api('play-start',{course});
+    issued=await api('play-start',{course,exitRules:RIGHT_EXIT_RULES});
   }
   catch (error) {ui.showError(error,status);}
   finally {starting=false;for (const item of oldButtons) item.disabled=false;}
@@ -110,7 +110,7 @@ async function start(course) {
     audio.resume().catch(()=>{});
   } catch {}
   const route=COURSES[course];
-  run={time:0,route:course,course,stage:'street',stageAt:0,line:route.line,station:route.origin,
+  run={time:0,route:course,course,rules:issued.rules,stage:'street',stageAt:0,line:route.line,station:route.origin,
     ride:null,hitAt:-2,penaltySeconds:0,grip:false,seated:false,motion:false,busIndex:route.startBusIndex??1,done:false};
   phone=paused=false;
   closeDialog();
@@ -167,6 +167,11 @@ function locationName() {
   if (run.stage === 'street' && run.busIndex !== 1) return BUS_STOPS[run.busIndex];
   return run.stage === 'street' ? '공덕동' : run.station + '역';
 }
+function finalRailPlatform() {
+  const course=COURSES[run.course];
+  return run.stage==='platform'&&course.transport==='train'&&run.line===course.line&&run.station===course.destination;
+}
+function rightStationExit() {return run.rules===RIGHT_EXIT_RULES&&finalRailPlatform();}
 function options() {
   const course=COURSES[run.course], bus=course.transport==='bus';
   const stopCount=course.destinationIndex-(bus?(run.ride?.index??run.busIndex):trainLines[run.line].indexOf(run.station));
@@ -174,7 +179,8 @@ function options() {
     :run.ride?Math.max(1,Math.ceil(run.ride.nextAt-run.time)+Math.max(0,stopCount)*(bus?course.busTravelSeconds+course.busDoorSeconds:course.trainTravelSeconds+course.trainDoorSeconds)+12)
     :bus?Math.max(1,Math.ceil(doorTiming(course.busDoorSeconds).remaining)+Math.max(0,stopCount)*(course.busTravelSeconds+course.busDoorSeconds)+28)
       :Math.max(1,Math.ceil((course.destinationIndex-trainLines[run.line].indexOf(run.station))*(course.trainTravelSeconds+course.trainDoorSeconds)+28));
-  return [{id:course.id,name:course.label,detail:(run.stage==='office'||run.stage==='exit-street')?'현재 위치 → 회사 입구':course.detail,
+  return [{id:course.id,name:course.label,detail:(run.stage==='office'||run.stage==='exit-street')?'현재 위치 → 회사 입구':
+      rightStationExit()?'승강장 오른쪽 바닥 화살표 → 출구로 이동 → 회사 입구':course.detail,
     minutes:Math.max(1,Math.ceil(remaining/10))}];
 }
 function drawPhone() {
@@ -204,7 +210,8 @@ function confirmRoute() {
 }
 function platform(before) {
   const line = trainLines[run.line], index = line.indexOf(run.station);
-  stage('platform',{station:run.station,line:run.line,neighbors:[line[index-1]??'회차',line[index+1]??'회차'],spawnZ:CHECKPOINTS.trainAlight.platform.z},before);
+  stage('platform',{station:run.station,line:run.line,neighbors:[line[index-1]??'회차',line[index+1]??'회차'],spawnZ:CHECKPOINTS.trainAlight.platform.z,
+    rightExit:run.rules===RIGHT_EXIT_RULES&&run.line===COURSES[run.course].line&&run.station===COURSES[run.course].destination},before);
 }
 function doorTiming(openSeconds) {
   const course=COURSES[run.course];
@@ -348,7 +355,7 @@ function refresh() {
   const r=run.ride, spot=world.nearest();
   let guide='', hint='';
   if (r) {
-    guide=r.type==='bus'?COURSES[run.course].destinationLabel+' 정류장에서 내리세요. 도착 전에 벨을 누르세요.':'시청 또는 충정로에서 열린 문으로 걸어 내리세요';
+    guide=r.type==='bus'?COURSES[run.course].destinationLabel+' 정류장에서 내리세요. 도착 전에 벨을 누르세요.':COURSES[run.course].destination+'역에서 열린 문으로 걸어 내리세요';
     const info=$('ride-info');
     info.hidden=false;
     world.setVehicleDestination((r.open?'정차 ':'다음 ')+ (r.open?stopName(r):nextName(r)));
@@ -381,12 +388,14 @@ function refresh() {
     }
     if (run.stage==='platform') {
       const course=COURSES[run.course];
-      guide=run.station===course.destination?'현재 '+course.destination+'역 · 하차 표시를 따라 출구로 이동하세요':`현재 ${run.station}역 · 오른쪽 승강장에서 ${course.destination} 방향 열차를 타세요`;
+      guide=rightStationExit()?'출구로 이동 · 오른쪽 바닥 화살표를 따라가세요':run.station===course.destination?'현재 '+course.destination+'역 · 하차 표시를 따라 출구로 이동하세요':`현재 ${run.station}역 · 오른쪽 승강장에서 ${course.destination} 방향 열차를 타세요`;
       const door=doorTiming(course.trainDoorSeconds);
       for (const train of world.platformTrains) train.position.z=door.open?0:-Math.min(85,door.remaining*8);
       if (spot?.direction) hint=spot.boarding?(door.open?'→ 노란 원 안에서 앞으로 걸어가 탑승하세요':'노란 원이 탑승 지점 · 열차까지 '+Math.ceil(door.remaining)+'초'):(door.open?(spot.direction===1?'→':'←')+' · '+spot.label+' · 문 열린 상태 '+Math.ceil(door.remaining)+'초':'열차까지 '+Math.ceil(door.remaining)+'초');
       if (spot?.alighting) hint=spot.id==='exit'&&run.station===COURSE.destination?'↑ · 표시를 따라 개찰구로 이동':'↑ · 계속 전진';
     }
+    if (rightStationExit()&&insideRightStationExit(world.hero.position.x,world.hero.position.z))
+      hint='방향키 · 출구로 이동';
     if (run.stage==='exit-street'||run.stage==='office') guide='거리를 따라 앞쪽 회사 입구까지 걸어가세요';
   }
   $('guide').textContent=guide;
@@ -424,7 +433,9 @@ function step(dt) {
     stage('hall',{station:run.station,line:run.line},before);
   } else if(run.stage==='hall'&&world.gate.open&&world.hero.position.z<=CHECKPOINTS.gate.triggerZ) {
     platform(snapshot());
-  } else if(run.stage==='platform'&&run.station===course.destination&&dz<0&&near(CHECKPOINTS.stationExit.platform.x,CHECKPOINTS.stationExit.platform.z,1.25)) {
+  } else if(finalRailPlatform()&&(rightStationExit()
+      ? (dx||dz)&&insideRightStationExit(world.hero.position.x,world.hero.position.z)
+      : dz<0&&near(CHECKPOINTS.stationExit.platform.x,CHECKPOINTS.stationExit.platform.z,1.25))) {
     stage('exit-hall',{station:run.station,line:run.line,spawnX:CHECKPOINTS.stationExit.hall.x,spawnZ:CHECKPOINTS.stationExit.hall.z},snapshot());
     notice('개찰구 앞입니다. E로 카드를 찍고 계속 전진하세요.');
   } else if(run.stage==='exit-hall'&&world.gate.open&&world.hero.position.z<=CHECKPOINTS.gate.triggerZ) {

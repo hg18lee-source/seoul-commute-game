@@ -1,6 +1,6 @@
 import { World } from '/assets/world.js';
 import { loadCommuter, movementSpeed } from '/assets/hero/motion.js';
-import { loadTransit } from '/assets/transit-scene.js';
+import { entranceHeight, loadTransit } from '/assets/transit-scene.js';
 import { createTutorial, routes, steps } from './state.mjs';
 import { createDialogue } from './dialogue.mjs';
 import { createPracticeInput } from './input.mjs';
@@ -9,7 +9,8 @@ import { createVisualGuide } from './visual-guide.mjs';
 const byId = id => document.getElementById(id);
 const tutorial = createTutorial();
 const dialogue = createDialogue(tutorial, undefined, readPosition);
-const integrated = location.pathname === '/tutorial/';
+const entranceTargetY = entranceHeight(...steps.entrance.point);
+const integrated = Boolean(document.querySelector('meta[name="integrated-tutorial"][content="enabled"]'));
 const listeners = new AbortController();
 const inputKeys = createPracticeInput();
 const editable = element => Boolean(element?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable=false])'));
@@ -25,8 +26,8 @@ let loaded = false;
 
 function readPosition() {
   if (!world) return {};
-  const { x, z } = world.hero.position;
-  return { x, z, gateOpen: world.gate?.open };
+  const { x, y, z } = world.hero.position;
+  return { x, y, z, entranceTargetY, gateOpen: world.gate?.open };
 }
 
 function scene(mode, data, bounds) {
@@ -50,7 +51,7 @@ function loadScene(state) {
   sceneKey = next;
   switch (next) {
     case 'street': scene('street', { spawnZ: 9 }, { minX: -5, maxX: 5, minZ: -2, maxZ: 12 }); break;
-    case 'entrance': scene('street', { spawnX: -6, spawnZ: -17 }, { minX: -7, maxX: -3, minZ: -33, maxZ: -14 }); break;
+    case 'entrance': scene('street', { spawnX: -4, spawnZ: -17 }, { minX: -7, maxX: -3, minZ: -33, maxZ: -14 }); break;
     case 'hall': scene('hall', { line: '5', spawnZ: 9 }, { minX: -3, maxX: 3, minZ: 1, maxZ: 12 }); break;
     case 'platform': scene('platform', { line: '5', station: '공덕', neighbors: ['마포', '애오개·충정로'], spawnZ: 4 },
       { minX: -4.45, maxX: 4.45, minZ: -5, maxZ: 7 }); break;
@@ -294,8 +295,7 @@ function frame(now) {
     const moved = world.move(dx, dz, dt, running ? movementSpeed.run : movementSpeed.walk);
     world.advanceHero(dt, { running });
     if (state.stage === 'pass') world.gateTick(clock);
-    const { x, z } = world.hero.position;
-    practice({ x, z, dt, moved, running, diagonal: Boolean(dx && dz), forward: dz < 0, right: dx > 0, gateOpen: world.gate?.open });
+    practice({ ...readPosition(), dt, moved, running, diagonal: Boolean(dx && dz), forward: dz < 0, right: dx > 0 });
   }
   const current = tutorial.snapshot();
   world.update(dt, clock, { rideMoving: ['railRide', 'busRide'].includes(current.stage) });
@@ -310,7 +310,15 @@ function frame(now) {
   frameId = requestAnimationFrame(frame);
 }
 
-try {
+async function initialize() {
+  if (integrated) {
+    const access = await fetch('/api/tutorial-access', { cache: 'no-store' });
+    if (access.status === 403) {
+      location.replace('/');
+      return;
+    }
+    if (access.status !== 204) throw new Error('연습 시작 상태를 확인하지 못했습니다.');
+  }
   const [hero, transit] = await Promise.all([loadCommuter(), loadTransit(() => {})]);
   if (transit.failures.length) throw new Error('불러오지 못한 모델 · ' + transit.failures.join(', '));
   if (!disposed) {
@@ -323,7 +331,9 @@ try {
     render();
     frameId = requestAnimationFrame(frame);
   }
-} catch (error) {
+}
+
+try { await initialize(); } catch (error) {
   byId('exit').disabled = !integrated;
   byId('hint').textContent = '3D 장면을 열 수 없습니다. WebGL 2 설정과 모델 파일을 확인하세요.';
   byId('feedback').textContent = error.message;

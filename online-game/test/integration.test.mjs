@@ -76,12 +76,15 @@ test('account rules, case-folding uniqueness, concurrent signup, and Argon2id',a
   const {rows:[stored]}=await pool.query('SELECT password_hash FROM commute_users WHERE id=$1',[signup.body.user.id]);
   assert.match(stored.password_hash,/^\$argon2id\$/);
   assert.notEqual(stored.password_hash,testPin);
-  for (const nickname of ['공 백','a123','닉!','ㄱ','A'.repeat(11),'Team\n','!']) {
+  for (const nickname of ['','공 백','a123','닉!','ㄱ','A'.repeat(11),'Team\n','!']) {
     assert.equal((await browser()('signup',{nickname,password:testPin})).status,400);
   }
-  for (const password of [123,'012','01234','٠١٢٣','0123\n']) {
+  for (const password of [123,'','012','01234','0A23','٠١٢٣','0123\n']) {
     assert.equal((await browser()('signup',{nickname:'Invalid',password})).status,400);
   }
+  const maxLength=browser();
+  assert.equal((await maxLength('signup',{nickname:'Abcdefghij',password:testPin})).status,201);
+  assert.equal((await maxLength('login',{nickname:'ABCDEFGHIJ',password:testPin})).status,200);
   beta=browser();
   const race=await Promise.all([
     beta('signup',{nickname:'Office',password:testPin}),
@@ -90,6 +93,19 @@ test('account rules, case-folding uniqueness, concurrent signup, and Argon2id',a
   assert.deepEqual(race.map(x=>x.status).sort(),[201,409]);
   assert.equal((await beta('login',{nickname:'office',password:testPin})).status,200);
   assert.equal((await browser()('signup',{nickname:'첫출근',password:testPin})).status,409);
+});
+
+test('tutorial session check never creates a play, record or audit entry',async()=>{
+  const counts=async()=>(await pool.query(
+    'SELECT (SELECT count(*) FROM commute_plays) AS plays, '+
+    '(SELECT count(*) FROM commute_records) AS records, '+
+    '(SELECT count(*) FROM commute_audit) AS audit'
+  )).rows[0];
+  const before=await counts();
+  assert.equal((await browser()('tutorial-access')).status,204);
+  assert.equal((await alpha('tutorial-access')).status,403);
+  assert.equal((await alpha('tutorial-access',{})).status,405);
+  assert.deepEqual(await counts(),before);
 });
 
 test('login error parity, cookies, same-origin requests, and player/admin isolation',async()=>{

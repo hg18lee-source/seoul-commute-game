@@ -38,5 +38,5 @@ if [[ "${1:-}" == --test ]]; then
 else
   env -i PATH="$PATH" HOME="$HOME" npm run build
   env -i PATH="$PATH" HOME="$HOME" DATABASE_URL="$db" PASSWORD_PEPPER="$pepper" node scripts/migrate.mjs
-  env -i PATH="$PATH" HOME="$HOME" DATABASE_URL="$db" PASSWORD_PEPPER="$pepper" PORT=8034 node scripts/dev.mjs --tutorial
+  env -i PATH="$PATH" HOME="$HOME" DATABASE_URL="$db" PASSWORD_PEPPER="$pepper" PORT=8034 node scripts/dev.mjs
 fi

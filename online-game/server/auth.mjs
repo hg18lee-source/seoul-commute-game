@@ -1,10 +1,10 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { hash, verify, Algorithm } from '@node-rs/argon2';
+import { idPattern, pinPattern } from '../dist/account-rules.js';
+export { idPattern, pinPattern };
 
 const requirements = {algorithm: Algorithm.Argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1};
 export const defaultSessionHours = 24;
-export const idPattern = /^[a-zA-Z가-힣]{1,10}$/u;
-export const pinPattern = /^[0-9]{4}$/;
 export function strongPassword(value) {
   if (typeof value!=='string'||value.length>256) return false;
   const chars=[...value];

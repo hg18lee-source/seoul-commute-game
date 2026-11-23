@@ -132,6 +132,17 @@ export function app(pool,config,{fetcher=fetch,clock=Date.now}={}) {
     const operation=url.pathname==='/administrator'?'admin-page':
       url.pathname==='/api'&&url.searchParams.getAll('__operation').length===1?url.searchParams.get('__operation'):
       url.pathname.startsWith('/api/')?url.pathname.slice(5):'';
+    if (operation==='tutorial-access') {
+      const headers={'Cache-Control':'private, no-store'};
+      if (!['GET','HEAD'].includes(request.method))
+        return new Response(null,{status:405,headers:{...headers,Allow:'GET, HEAD'}});
+      try {
+        const {user}=await auth.find(pool,request.headers,false);
+        return new Response(null,{status:user?403:204,headers});
+      } catch {
+        return new Response(null,{status:503,headers});
+      }
+    }
     const ctx={id:randomUUID(),at:clock(),action:Object.hasOwn(routes,operation)?operation:'unknown',
       method:/^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$/.test(request.method)?request.method:'OTHER'};
     const started=performance.now();

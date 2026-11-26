@@ -57,7 +57,7 @@ commute_audit는 요청당 하나의 UUID, 서버 UTC, 검증된 사용자 ID �
 1. 온라인 작업 트리에서 vercel login을 실행합니다. 열리는 Vercel 로그인과 CLI 승인 화면에서 본인 계정으로 연결합니다. vercel link에서 팀과 기존 프로젝트를 선택합니다. 기존 프로젝트가 없다면 대시보드의 **Add New → Project** 또는 CLI 질문에서 별도 프로젝트를 만듭니다. CLI 연결 시 GitHub 저장소에 push할 필요가 없습니다.
 2. 기존 적합한 PostgreSQL이 있다면 **Settings → Environment Variables**에서 pooled 연결을 지정합니다. 없다면 **Storage / Integrations → Browse Marketplace → Neon → Install**에서 Free를 선택하고 프로젝트에 연결합니다. 새 계정 생성·약관 승인은 계정 소유자가 처리합니다. Preview와 Production은 별도 DB나 Neon 브랜치를 사용합니다. 함수는 hnd1이며 가능한 가까운 DB 리전을 선택합니다. [Vercel Neon 통합](https://vercel.com/marketplace/neon/neon)
 3. **Settings → Environment Variables**에서 Preview·Production에 DATABASE_URL과 PASSWORD_PEPPER를 입력합니다. Production Cron에는 CRON_SECRET을 지정합니다. 실 교통 조회에는 SEOUL_OPENAPI_KEY와 DATA_GO_KR_SERVICE_KEY가 필요합니다. 기존 Sites의 키 설정은 보존합니다. 직접 DB 접속 문자열은 마이그레이션을 수행하는 운영 터미널에만 넣을 수 있습니다.
-4. 권한 있는 터미널에서 vercel env pull .env.local --environment=preview, npm run migrate, npm run admin:create -- 관리자닉을 실행합니다. vercel deploy가 출력한 Preview 주소에서 게임과 /administrator, 세션 거절, 가입·로그인, 저장·랭킹·감사, 실제 교통 조회를 확인합니다.
+4. 권한 있는 터미널에 Preview 전용 DB 접속 값과 pepper를 설정하고 npm run migrate, npm run admin:create -- 관리자닉을 실행합니다. vercel deploy --environment preview가 출력한 Preview 주소에서 게임과 /administrator, 세션 거절, 가입·로그인, 저장·랭킹·감사, 실제 교통 조회를 확인합니다.
 5. Preview 검증 후 Production 환경과 DB에 별도로 마이그레이션하고 관리자를 만든 다음 vercel deploy --prod를 실행합니다. 기존 GitHub Pages 링크와 Sites 배포는 유지합니다. [Vercel CLI 배포](https://vercel.com/docs/projects/deploy-from-cli)
 
 롤백은 Vercel 프로젝트의 **Deployments → 직전 정상 Production → Instant Rollback** 또는 vercel rollback 명령으로 수행합니다. Hobby는 직전 Production으로만 롤백할 수 있습니다. 앱 롤백은 DB를 되감지 않으므로 스키마 호환성과 별도 DB 백업을 확인합니다. [Vercel Instant Rollback](https://vercel.com/docs/instant-rollback)
@@ -73,4 +73,46 @@ TEST_DATABASE_URL에 이름이 commute_test_로 시작하는 빈 분리 DB를 �
 
 격리 PostgreSQL에서 통합 테스트 7개를 통과했습니다. Edge에서 실제 키 입력으로 공덕역 진입·5호선 탑승·충정로 환승·2호선 탑승·시청 회사 포털까지 진행했고, 서버가 공식 기록 03:25.7을 저장했습니다. 브라우저 저장소를 비우고 새 로그인 세션으로 같은 기록을 다시 조회했습니다. 별도 시도에서 스마트폰 사용 중 시간 진행, 정지 화면의 타이머 멈춤, 10초 네트워크 단절 종료와 관리자 필터·요청 상세 화면을 확인했습니다.
 
-실제 공급처 인증을 사용하는 교통 호출, Vercel Preview·Production 동작과 Neon 연결은 계정 연결 이후의 검증 항목입니다.
+아래 표에는 배포 환경에서 별도로 확인한 결과를 기록합니다.
+
+## 배포 상태와 평가 환경 검증
+
+2026-11-20에 Vercel Hobby의 HTSQ 팀에 연결했습니다. Production 고정 도메인은 [seoul-commute-online.vercel.app](https://seoul-commute-online.vercel.app/)이며, [관리자 화면](https://seoul-commute-online.vercel.app/administrator)과 [관리자 로그인](https://seoul-commute-online.vercel.app/?admin=1)은 게임의 관리자 인증을 사용합니다. Vercel의 Standard Protection 설정에서 비로그인 HTTPS 요청은 Production에서 200, Preview에서는 Vercel 로그인으로 리디렉션됐습니다. Production 첫 화면은 Vercel 세션이 없는 새 Chromium에서도 확인했습니다.
+
+Production과 Preview에는 싱가포르 리전의 독립된 Neon Free 프로젝트를 사용합니다. 서로 다른 프로젝트 ID와 DB 호스트를 확인했고 각 DB에 트랜잭션 기반 마이그레이션을 적용했습니다. Preview 검증 계정과 운영 관리자는 분리했습니다. 관리자 비밀번호는 숨김 입력으로 초기화하고 운영 비밀번호는 접근 권한이 제한된 WSL 사용자 저장소에 보관했습니다.
+
+Node.js 22 정적 빌드와 격리 PostgreSQL의 통합 테스트 7개를 다시 통과했습니다. 공개 산출물 16개에서 환경 변수 파일과 DB 접속 문자열·개인 키 패턴은 발견되지 않았습니다. Production HTTPS로 환경 파일, 내부 서버 모듈, 마이그레이션 경로가 404를 반환하는 것을 확인했습니다.
+
+| 실제 배포 확인 항목 | Preview | Production |
+| --- | --- | --- |
+| 게임 계정 비로그인 첫 화면, 스크립트·GLB 모델, 3D 장면 | 통과, Vercel 검증 권한으로 확인 | 통과, Vercel 인증 없이 확인 |
+| 가입 UI, 정상 로그인, 잘못된 비밀번호 거절 | 통과 | 통과 |
+| 익명 게임 시작·기록 제출 차단, 로그아웃 후 보호 API 차단 | 통과 | 통과 |
+| 로그인 후 3D 게임 시작·키 입력·서버 진행 확인 | 통과 | 통과 |
+| 실제 완주, 공식 기록 저장과 별도 브라우저에서 기록 유지 | 실제 키 입력 완주, 서버 201 저장, 별도 브라우저 재로그인 후 기록 조회 통과 | 실제 키 입력 완주, 서버 201 저장, 별도 브라우저 재로그인 후 기록 조회 통과 |
+| 코스별 랭킹과 0.1초 공동 순위 | 코스 분리 및 임시 동점 데이터의 공동 순위 통과 | 코스 선택 통과, 실제 동점 검증은 미수행 |
+| 일반 계정의 관리자 화면·API 차단, 관리자 로그인·로그 조회 | 통과 | 통과 |
+| ALLOW·BLOCK·FAIL 저장과 교통 요청·실제 외부 호출 집계 | 통과, 미설정 요청과 외부 호출 0건을 구분 | 통과, 미설정 요청과 외부 호출 0건을 구분 |
+| Secure·HttpOnly·SameSite 쿠키와 CSRF 검사 | 통과 | 통과 |
+| 승인된 키를 사용한 서울시·공공데이터포털 실제 교통 조회 | 미검증, 키 미설정 | 미검증, 키 미설정 |
+
+독립 이미지 텍스처는 배포 자산에 없습니다. 표지판 등은 브라우저가 캔버스 텍스처로 그립니다. 두 환경에서 3D 진행을 확인했으며 개별 표지판 텍스처를 따로 검증하지는 않았습니다. 첫 배포는 Vercel이 자동으로 Production에 배정했습니다. 이후 Preview 환경을 명시해 별도 배포하고 인증·권한·감사 기능을 확인한 다음 Production을 명시적으로 다시 배포했습니다.
+
+공식 게임의 코스와 운행 규칙은 코드에 포함되어 있으며, 별도 교통 조회가 실패해도 공식 플레이 경로는 교통 조회 응답에 의존하지 않습니다. 실교통 키는 기존 승인 설정의 사용 권한과 값을 확인할 수 있는 계정에서 서버 환경에 등록합니다. Preview와 Production에는 전용 테스트 계정을 사용합니다. 관리자 접속 정보는 평가에서 필요한 경우 별도 비공개 채널로 전달합니다.
+
+## 배포 환경 변수와 운영 순서
+
+| 변수 | 용도와 범위 |
+| --- | --- |
+| `DATABASE_URL` | 각 환경 전용 PostgreSQL pooled URI. Preview와 Production의 연결 대상 및 자격 증명을 분리합니다. |
+| `DIRECT_DATABASE_URL` | 선택 사항. 해당 환경 마이그레이션과 최초 관리자 생성용 직접 URI를 운영 터미널에만 설정합니다. Neon 통합의 `DATABASE_URL_UNPOOLED` 값을 여기에 사용할 수 있습니다. 설정하지 않으면 pooled URI를 사용합니다. |
+| `PASSWORD_PEPPER` | 각 환경별 독립 난수 비밀값. 비밀번호 해시와 CSRF 서명에 사용합니다. |
+| `CRON_SECRET` | Production 감사 로그 정리 Cron 인증용 비밀값입니다. |
+| `AUDIT_RETENTION_DAYS` | 선택 사항. 감사 로그와 진행 이벤트 보존 기간이며 기본값은 30일입니다. |
+| `SEOUL_OPENAPI_KEY`, `DATA_GO_KR_SERVICE_KEY` | 서버의 실제 지하철·버스 API에 쓰는 승인된 자격 증명입니다. |
+
+Preview와 Production의 비밀을 각각 Vercel **Settings → Environment Variables**에서 Secret으로 설정합니다. Secret 값을 다시 내려받는 데 의존하지 않고, 관리자 초기화에 필요한 DB 연결과 같은 환경의 pepper는 권한 있는 운영자가 보안 저장소에서 터미널로 전달합니다. 비밀값을 CLI 인수나 Git 파일에 기록하지 않습니다. 프로젝트에 시스템 환경 변수도 제공되는지 확인합니다. 앱은 Vercel의 `VERCEL` 값으로 HTTPS 쿠키를 활성화합니다. 배포 전 대상 DB와 복구 지점을 확인하고 `npm run migrate`를 실행한 뒤 `npm run admin:create -- 관리자닉`에서 비밀번호를 숨김 입력합니다. [Vercel 비밀 환경 변수](https://vercel.com/docs/environment-variables/sensitive-environment-variables)
+
+Preview는 `vercel deploy --environment preview`로 만들고 위 검증표를 실행합니다. Production 배포와 재배포는 검증한 소스에서 `vercel deploy --prod`를 사용합니다. Vercel **Settings → Deployment Protection**에서 Vercel Authentication의 범위를 **Standard Protection**으로 두고, **Settings → Domains**의 Production 기본 도메인을 Vercel 세션이 없는 브라우저에서 확인합니다. 최근 배포의 고유 URL은 보호될 수 있습니다. Production에서 검증표를 다시 실행한 뒤 확인한 Production 도메인, 관리자 경로와 결과를 이 문서에 기록합니다. [Vercel 배포 보호](https://vercel.com/docs/deployment-protection)
+
+Neon Free는 공식 요금표상 기간 제한이나 카드 등록 없이 사용할 수 있습니다. 프로젝트별 월 100 CU시간과 저장 1GB를 제공하며, 유휴 컴퓨트가 일시정지됐다가 요청 시 다시 시작되면 첫 DB 호출이 늦어질 수 있습니다. 할당량을 소진하면 DB를 쓰는 가입·로그인·기록 저장·관리 기능이 영향을 받을 수 있습니다. Vercel Hobby에서도 사용량 한도 소진 시 해당 기능 이용이 제한될 수 있습니다. 앱 롤백 가능 여부는 배포 보존 상태와 DB 스키마 호환성을 함께 확인합니다. [Neon Free](https://neon.com/pricing) · [Neon 유휴 컴퓨트](https://neon.com/blog/how-to-reduce-postgres-compute-costs-as-you-scale) · [Vercel Hobby](https://vercel.com/docs/plans/hobby)

@@ -1,3 +1,4 @@
+import { loadCommuter, movementSpeed } from './hero/motion.js';
 import { World } from './world.js';
 import { showTraffic } from './traffic-data.js';
 
@@ -19,7 +20,7 @@ const routes = [
   {name:'직행 · 7016번', detail:'공덕역1번출구 → 북창동·소공동주민센터건너', minutes:43},
 ];
 const events = [45, 115, 195];
-const movementSpeed = Object.freeze({walk:3.6, run:5.4});
+
 // Preserve earlier records under their original key; faster movement is a new condition.
 const recordKey = 'seoul-commute.prototype.best.movement-v2';
 const profileKey = 'seoul-commute.prototype.nickname';
@@ -346,6 +347,7 @@ function step(dt) {
   if (run.motion) world.crowdCollision(running,dt,()=>{
     if (run.time-run.hitAt>=2) { run.hitAt=run.time; damage(3,'보행자 충돌'); }
   });
+  world.advanceHero(dt,{running,grip:run.grip,seated:run.seated});
   eventStep(running);
   if (run.hp<=0) { finish(false); return; }
   if (run.stage==='office'&&near(0,-26,1.2)) { finish(true); return; }
@@ -367,7 +369,7 @@ function render(now) {
   }
   if (now>toastUntil) $('toast').classList.remove('show');
   if (!paused) world.update(Math.min(dt,.05),run?.time??now/1000,{
-    intro:!run,moving:!!run?.motion&&!run.done,running:keys.has('Shift'),grip:run?.grip,seated:run?.seated,
+    intro:!run,ended:!!run?.done,seated:run?.seated,
     rideMoving:!!run?.ride&&!run.ride.open&&!run.done,
   });
   requestAnimationFrame(render);
@@ -403,12 +405,12 @@ function bind() {
   for (const b of document.querySelectorAll('[data-action]')) b.onclick=()=>{ if (run&&!run.done) (b.dataset.action==='e'?action:grip)(); };
 }
 try {
-  world = new World($('world'));
+  world = new World($('world'), await loadCommuter());
   menu();
   bind();
   requestAnimationFrame(render);
 } catch {
-  $('screen').innerHTML='<section class="panel"><h1>3D 화면을 시작하지 못했습니다.</h1><p>WebGL 2를 지원하고 하드웨어 가속이 켜진 브라우저에서 다시 열어 주세요.</p></section>';
+  $('screen').innerHTML='<section class="panel"><h1>3D 화면을 시작하지 못했습니다.</h1><p>로컬 HTTP 서버와 주인공 모델 파일, WebGL 2 지원 상태를 확인해 주세요.</p></section>';
 } finally {
   $('loading').hidden=true;
 }

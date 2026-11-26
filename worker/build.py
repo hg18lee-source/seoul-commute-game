@@ -10,10 +10,13 @@ TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
     ".css": "text/css; charset=utf-8",
+    ".glb": "model/gltf-binary",
     ".txt": "text/plain; charset=utf-8",
 }
 FILES = (
-    "index.html", "style.css", "game.js", "world.js", "traffic-data.js",
+    "index.html", "style.css", "game.js", "world.js", "traffic-data.js", "gongdeok-street.js",
+    "hero/motion.js", "hero/commuter.glb", "hero/vendor/loaders/GLTFLoader.js",
+    "hero/vendor/utils/BufferGeometryUtils.js",
     "vendor/three.module.js", "vendor/three.core.js", "vendor/THREE-LICENSE.txt",
 )
 assets = {}

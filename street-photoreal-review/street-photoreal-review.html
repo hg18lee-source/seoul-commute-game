@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>서울 거리 · 준실사 검토</title>
+<link rel="stylesheet" href="./review.css"></head>
+<body>
+<main>
+<header><p>대중교통 출근 게임 · 그래픽 검토</p><h1>서울 거리 준실사 시안</h1></header>
+<nav aria-label="장면 보기">
+<button data-view="match" aria-pressed="true">사진 구도</button>
+<button data-view="play" aria-pressed="false">3인칭 이동</button>
+<button data-view="overview" aria-pressed="false">다른 각도</button>
+<button data-view="paving" aria-pressed="false">보도</button>
+<button data-view="shops" aria-pressed="false">상점</button>
+<button data-view="entrance" aria-pressed="false">역 입구</button>
+<button data-view="tree" aria-pressed="false">나무</button>
+<label>품질 <select id="quality"><option value="detail">상세</option><option value="light">경량</option></select></label>
+</nav>
+<div class="comparison" id="comparison">
+<figure id="reference"><figcaption>참고 사진</figcaption><img src="./reference/street.png" alt="차도 왼쪽, 상점과 지하철 입구가 오른쪽에 있는 서울 거리"></figure>
+<figure><figcaption id="render-title">3D 재구성 · 고정 비교 카메라</figcaption><div class="viewport"><canvas id="street" tabindex="0" aria-label="실제 3D 거리"></canvas><p role="status" id="status">장면과 주인공을 불러오는 중…</p></div></figure>
+</div>
+<p id="hint">사진과 같은 방향으로 비교합니다. <strong>3인칭 이동</strong>에서 방향키와 Shift로 걸어볼 수 있습니다.</p>
+</main><script type="module" src="./review.js"></script>
+</body></html>

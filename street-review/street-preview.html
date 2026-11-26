@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>공덕동 출발 거리 비교</title>
+<link rel="stylesheet" href="./street-preview.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="label">대중교통 출근 게임</p>
+    <h1>공덕동 출발 거리</h1>
+    <p>같은 위치와 조명에서 기존 거리와 개선 거리를 전환합니다.</p>
+  </header>
+  <div class="toolbar">
+    <div role="group" aria-label="거리 버전">
+      <button data-version="before" aria-pressed="false">기존 거리</button>
+      <button data-version="after" aria-pressed="true">개선 거리</button>
+    </div>
+    <div role="group" aria-label="관찰 구도">
+      <button data-view="start" aria-pressed="true">게임 카메라</button>
+      <button data-view="overview" aria-pressed="false">거리 전체</button>
+      <button data-view="facade" aria-pressed="false">상점 외관</button>
+      <button data-view="station" aria-pressed="false">역 입구</button>
+      <button data-view="stop" aria-pressed="false">정류장</button>
+    </div>
+    <button id="walk">직접 걸어보기</button>
+  </div>
+  <div class="stage">
+    <canvas id="world" tabindex="0" aria-label="공덕동 거리 3D 검토 화면"></canvas>
+    <p id="status" role="status">거리와 주인공 모델을 불러오는 중…</p>
+  </div>
+  <p>방향키로 이동하고 Shift를 누르면 달립니다. 직접 이동할 때 게임의 고정 각도 카메라를 사용합니다.</p>
+</main>
+<script type="module" src="./street-preview.js"></script>
+</body>
+</html>

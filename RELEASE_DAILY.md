@@ -8,7 +8,7 @@
 set +x
 set -euo pipefail
 umask 077
-cd '/mnt/c/Users/통신운용/Desktop/AWS프로젝트/seoul-commute-entrance-integrated'
+cd "$(git rev-parse --show-toplevel)"
 if [ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]; then
   source "${NVM_DIR:-$HOME/.nvm}/nvm.sh"
   nvm use 22
@@ -23,11 +23,11 @@ sha="$(git rev-parse HEAD)"
 printf '배포 소스 %s @ %s\n' "$branch" "$sha"
 # 이 문서와 배포 후보 SHA를 배포 전 최종 보고의 값과 대조한다.
 work="$(mktemp -d /tmp/commute-daily-release.XXXXXXXX)"
-receipt_dir="$PWD/../seoul-commute-vercel-release"
+receipt_dir="${RELEASE_RECEIPT_DIR:-$PWD/.release}"
 scope=htsq
 project=seoul-commute-online
 public=https://seoul-commute-online.vercel.app
-link="$PWD/../seoul-commute-online/.vercel/project.json"
+link="${VERCEL_LINK_FILE:-$PWD/online-game/.vercel/project.json}"
 mkdir -p "$receipt_dir" "$work/upload/.vercel"
 unset VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID
 vercel whoami

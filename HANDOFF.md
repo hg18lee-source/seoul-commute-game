@@ -1,91 +1,61 @@
-# 주말 개발 인수인계
+# 서울 출근 게임 인수인계
 
-기준일: 2026-11-20 (Asia/Seoul)
+본편 재개 브랜치는 `handoff/resume`이다. 본편 코드 기준은 관리자 대시보드 커밋 `0511ea82dbb969357766a28828c528517e04f219`이며, 이 문서는 그 위의 인수인계 커밋에 들어 있다. 정확한 인수인계 SHA는 체크아웃 후 `git rev-parse HEAD`로 확인한다.
 
-## 프로젝트와 현재 단계
+## 보존 브랜치
 
-대중교통 출근 게임은 공덕동에서 출발해 지하철 또는 7016번 버스를 타고 회사까지 이동하는 3인칭 웹게임입니다. 로그인·회원가입, 서버가 발급하는 플레이 ID, 검증·저장되는 공식 기록, 개인 기록·공동 순위, 관리자 감사 화면이 동작합니다. 현재는 대표 코스 두 개를 운영하는 제출용 Production 게임이며, 서울 24개 조합 전체나 완성된 실제 역 실측 재현은 구현 범위에 포함되지 않았습니다.
+| 브랜치 | 기준 또는 보존 커밋 | 내용 |
+| --- | --- | --- |
+| `codex/admin-dashboard-review` | `0511ea8` | 운영 요약, API·요청 이력, 집계 근거 UI |
+| `codex/release-daily-completions` | `3125232` | 공식 완주 집계 마이그레이션과 배포 검증 |
+| `codex/station-entrance-connection`, `codex/production-entrance-integration`, `codex/platform-exit-guide`, `codex/current-official-rankings` | `c2f7551` | 우측 승강장 출구 안내 및 기존 작업 포인터 |
+| `codex/tutorial-public-release`, `codex/local-tutorial-integration`, `codex/ai-commute-tutorial`, `codex/vercel-build-fix` | `f824155`, `0bf4952`, `40c2931`, `73fa298` | 튜토리얼의 통합과 독립 시안, 빌드 수정 이력 |
+| `feature/official-online`, `feature/production-graphics` | `28de9a1`, `303e067` | 인증·랭킹·관리자, 입구·장면 자산 |
+| `handoff/platform-local` | `efd3e29` | 역 계단·통로, 이동 안내, 공식 판정과 테스트의 로컬 변형 |
+| `handoff/tutorial-id-local` | `ad60bc4` | 가입 ID 규칙과 튜토리얼 UX·테스트의 로컬 변형 |
+| `handoff/official-online-local` | `fa6dfb8` | 온라인 운영 문서 미커밋 변경 |
+| `handoff/prototype-game` | `a697744` | 그래픽 검토용 시안, Worker와 플레이 코드, 배포 가능한 자산 |
 
-현재 게임 공개 주소: <https://seoul-commute-online.vercel.app/>
-관리자 화면: <https://seoul-commute-online.vercel.app/administrator> (관리자 로그인 필요)
+기존 Pages `main`의 확인된 로컬 커밋은 `1eac00e`다. Sites 시안의 `main`은 별도 이력 `9ae67c6`이며 프로토타입 브랜치의 부모로 보존했다. 배포용 임시 clone의 스테이징은 기존 Pages 루트 파일 11개 삭제뿐이었으며 별도 로컬 패치로 보존했다.
 
-## 이 브랜치와 배포 소스
+## 현재 상태
 
-- 저장소: <https://github.com/hg18lee-source/seoul-commute-game>
-- 개인 컴퓨터에서 사용할 브랜치: `handoff/weekend-continuation`
-- 기준 공개 `main`: `1eac00e278c03b6d8f90105aefb44ba90a20fb8d`. 기존 GitHub Pages 사이트 루트와 `main`의 이력은 이 브랜치에서 변경하지 않았습니다.
-- Production 소스 원래 작업 폴더: `seoul-commute-graphics`, 브랜치 `feature/production-graphics`, 커밋 `303e0679db21aa414cdb8fa52b5dcd29c53f9e66` (부모 `ef01ff1`). 실제 배포 식별자 `dpl_FWxGYyqwwdVeNAkmVdacPmWVL8Y3`, 프로젝트 `htsq/seoul-commute-online`.
-- 위 Production 소스의 커밋 트리를 `online-game/`에 복사했습니다. 이번 인수인계 브랜치는 public `main`에서 시작해 해당 소스 스냅샷과 프로토타입 자료를 더하는 커밋입니다. Production 소스 저장소의 Git 이력을 새 공개 저장소 이력에 합치지는 않았으며, 원본 폴더와 브랜치를 그대로 보존했습니다.
-- 프로토타입 원본 `seoul-commute-prototype`은 `main`의 `9ae67c6`에서 수정·신규 검토 파일이 미커밋 상태였습니다. `prototype/`에 현재 작업본을 보관하며 원본 저장소에서는 커밋·정리하지 않았습니다. 온라인 저장소 `seoul-commute-online`은 `feature/official-online`의 `28de9a1`에 미커밋 `ONLINE.md` 변경이 있었고, 해당 최신 문서를 `online-game/ONLINE.md`에 포함했습니다. Pages 저장소는 `main`의 `1eac00e`입니다. 사진 참고 폴더 `references/`, 사이트 연결 메타데이터, 생성된 `dist/server/`는 제외했습니다.
-- `evidence/`에는 Production 확인 문서, 전후 비교 화면, 대표 경로 화면과 Preview QA 영상을 넣었습니다. 영상은 테스트 계정으로 진행한 Preview 촬영입니다.
+- 본편에는 튜토리얼, ID 유효성 검사, 로그인과 공식 코스 랭킹, 공덕역 계단·통로와 출구 안내, 공식 완주 자동 집계, 관리자 필터 및 집계 근거·재계산 화면이 있다.
+- 집계는 서울 날짜 및 현재 코스별 공식 규칙으로 저장된 `commute_records`를 조회한다. 튜토리얼·실패·무효·이전 규칙 플레이는 제외한다. 동일 플레이 재제출과 동시 완료, 원본 기록 대조는 격리 DB 통합 테스트 대상이다.
+- 2026-11-23 보관된 Production 검증 기록은 `3125232` 번들 일치와 관리자 로그인, 집계·근거·실행 이력·재계산 검증을 기록한다. 당시 실제 신규 운영 완주에 따른 자동 갱신은 관측하지 않았다. `0511ea8`은 Preview 배포 기록이 있고 Production 승격은 미확인이다. 이번에 공개 호스트 DNS 조회에 실패해 현재 운영 버전을 실시간으로 확인하지 못했다.
+- 플랫폼 로컬 스냅샷 변경 21개 파일 중 6개, 튜토리얼 로컬 스냅샷 13개 중 11개가 관리자 기준 트리와 다르다. 브랜치별 차이를 검토한 뒤 필요한 변경만 선택한다. 공식 집계와 브라우저 두 코스 완주 재현이 다음 확인 사항이다.
 
-## 구현과 실제 확인 범위
+## 새 컴퓨터에서 실행
 
-`online-game/`은 온라인 본편, API, PostgreSQL 마이그레이션, 테스트·빌드 스크립트, 최적화 GLB·텍스처·모션과 출처 크레딧을 포함합니다. Production 두 코스에서 실제 키 입력으로 완주하고 기록 HTTP 201 저장, 별도 브라우저 재로그인 후 기록 재조회, 랭킹, 관리자 권한·감사 로그, ALLOW/BLOCK/FAIL 집계, 비공개 파일 경로 거절을 확인했습니다. 상세 증거와 수치 한계는 `evidence/PRODUCTION-VERIFICATION.md`와 `online-game/ASSETS.md`를 보세요.
+Linux 또는 WSL의 일반 사용자 환경에서 Git, Node.js 22.x와 npm, PostgreSQL 서버 도구(`pg_config`, `initdb`, `pg_ctl`, `createdb`), WebGL 2 브라우저가 필요하다. Ubuntu에서는 `sudo apt install postgresql libpq-dev`로 서버 도구를 설치할 수 있다. Node 22.23.5, npm 10.9.9, PostgreSQL 18.6 바이너리로 확인했다. 정적 시안·준비 스크립트에는 Python 3이 필요하다.
 
-본편에 적용된 그래픽은 개선한 주인공과 절차형 이동 모션, 공유 NPC, 5차 거리 상점·재질, 최적화된 역 입구와 실제 상호작용 개찰구, 자체 제작 역사 내부·차량·정류장입니다. 별도 시안 화면·캡처는 `prototype/*-review/`에 있으며, 해당 폴더가 Production에 복사된 것은 아닙니다. `online-game/dist/` 안의 모델만 실제 온라인 본편 자산입니다.
-
-미완성·제한: 대표 경로 외 코스는 지원하지 않습니다. 역사 내부는 게임용 축소 구성입니다. 성능 비교는 Chromium 800×600 SwiftShader 소프트웨어 렌더링에서만 했고 하드웨어 GPU, 실제 VRAM, 전체 운행 프레임 비용은 미측정입니다. 발별 착지 프레임은 독립 검증하지 않았습니다. 교통 API 키가 없는 새 환경에서는 실제 교통 조회가 동작하지 않으며 모의 응답을 Production 상태로 오인하면 안 됩니다. 기존 사용자 계정·DB와 관리자 암호는 이 저장소에 포함하지 않았습니다.
-
-## 도구와 빠른 실행
-
-필요 도구: Git, Node.js `22.x`, npm, 브라우저(WebGL 2). 프로토타입·자산 준비 스크립트에는 Python 3가 추가로 필요합니다. PostgreSQL은 온라인 계정·기록 API와 통합 테스트에 필요합니다.
-
-```bash
-git clone --branch handoff/weekend-continuation https://github.com/hg18lee-source/seoul-commute-game.git
-cd seoul-commute-game/online-game
-npm ci
-npm run build
-```
-
-정적 첫 화면과 게임 자산만 확인하려면 `online-game/`에서 `python3 -m http.server 8010 --directory public-online`을 실행하고 `http://127.0.0.1:8010/`을 엽니다. 이 방식은 API를 제공하지 않습니다. 회원가입·로그인·플레이 API를 실행하려면 아래의 별도 로컬 DB와 `.env.local`을 먼저 준비한 뒤 `npm run migrate && npm run dev`를 실행하세요.
-
-별도 프로토타입을 실행할 때는 새 터미널에서 다음을 실행하고 `http://127.0.0.1:8000/`을 엽니다.
+원격 브랜치가 확인된 뒤 실행한다.
 
 ```bash
-cd seoul-commute-game/prototype
-python3 -m http.server --directory dist 8000
+git clone --branch handoff/resume https://github.com/hg18lee-source/seoul-commute-game.git
+cd seoul-commute-game
+git rev-parse HEAD
+npm --prefix online-game ci --engine-strict
+npm --prefix online-game run build
+node --test tutorial/tests/*.test.mjs
+bash tutorial/run-local.sh --test
+bash tutorial/run-local.sh --admin 개발관리자
 ```
 
-`prototype/worker/build.py`는 포함된 Worker 소스에서 `prototype/dist/server/index.js`를 다시 생성합니다. 생성 파일은 인수인계에서 제외했습니다. Python 표준 라이브러리만 쓰며 외부 API 키가 필요한 조회 기능은 실제 키를 별도로 설정하기 전까지 확인할 수 없습니다.
+터미널에 개발 관리자 비밀번호를 입력한다. 서로 다른 문자가 8개 이상인 20~128자를 사용한다. 본편은 `http://127.0.0.1:8034/`, 관리자 로그인은 `http://127.0.0.1:8034/?admin=1`, 대시보드는 `http://127.0.0.1:8034/administrator`에서 연다. 실행기가 별도 로컬 소켓의 임시 DB와 랜덤 pepper를 만든다. 종료 시 해당 DB와 개발용 기록을 정리한다.
 
-## 로컬 DB와 환경 변수
+지속형 개발이 필요하면 `online-game/.env.example`을 같은 폴더의 `.env.local`로 복사하고, **격리된 개발 DB**의 `DATABASE_URL`과 로컬용 `PASSWORD_PEPPER`를 설정한다. pepper는 `openssl rand -hex 32` 등으로 새로 생성하고 해당 개발 DB를 유지하는 동안 같은 값을 쓴다. 같은 폴더에서 `npm run migrate`, `npm run admin:create -- 개발관리자`, `npm run dev`를 순서대로 실행한다. 통합 테스트에는 폐기 가능한 별도 `TEST_DATABASE_URL`을 사용한다.
 
-`online-game/.env.example`에는 변수명과 용도만 있습니다. 로컬에서 복사해 `online-game/.env.local`을 만들고 **전용 로컬 PostgreSQL DB** 및 테스트 전용 비밀값을 채우세요. `.env.local`은 Git 제외 대상입니다.
+## 자산과 별도 설정
 
-| 변수 | 용도 |
-| --- | --- |
-| `DATABASE_URL` | 앱 런타임 PostgreSQL 연결 (개발 DB만) |
-| `DIRECT_DATABASE_URL` | 마이그레이션·관리자 초기 생성용 직접 연결 |
-| `PASSWORD_PEPPER` | Argon2id 비밀번호·CSRF 보조 비밀값 |
-| `CRON_SECRET` | 보존 기간 정리 Cron 인증 |
-| `AUDIT_RETENTION_DAYS` | 감사·진행 이벤트 보관 일수 |
-| `SEOUL_OPENAPI_KEY` | 서울시 지하철 정보 조회 키 |
-| `DATA_GO_KR_SERVICE_KEY` | 공공데이터 버스 조회 키 |
-| `PORT` | 로컬 개발 HTTP 포트 (기본 8010) |
-| `COOKIE_SECURE` | HTTPS 로컬 시험 때만 Secure 쿠키 설정 |
-| `TEST_DATABASE_URL` | 테스트 전용 빈 `commute_test_*` DB |
+- GLB, 텍스처, Three.js 및 라이선스는 Git에서 내려받는다. 검사한 Git 객체 중 100 MiB 제한을 넘는 파일이 없어 LFS는 현재 실행에 필요하지 않다. 향후 LFS 자산이 추가된 브랜치는 Git LFS 설치 후 `git lfs install && git lfs pull`로 실파일을 받는다.
+- DB 연결 문자열과 pepper는 각 환경의 보안 저장소에서 준비한다. 운영·Preview의 DB와 기존 계정용 pepper는 환경별로 관리한다. 교통 API를 쓸 때 `SEOUL_OPENAPI_KEY`, `DATA_GO_KR_SERVICE_KEY`를, 배포 환경의 주기 작업에는 `CRON_SECRET`을 해당 환경에서 설정한다. 관리자 비밀번호, 토큰, 쿠키, 키, 운영 덤프는 별도 보안 보관 대상이다.
+- 출처·재배포 권리가 미확인인 시안 참조 이미지는 원본 컴퓨터의 프로토타입과 로컬 전용 스냅샷에 있다. 본편 실행에는 저장소의 최적화 자산을 사용한다. 원본이 필요한 검토 화면과 라이선스는 [ASSET_TRANSFER.md](ASSET_TRANSFER.md)를 확인한다.
+- 로컬 실행은 이전 작업 폴더의 절대 경로나 `/tmp/commute-tools` 설치에 의존하지 않는다. 임시 PostgreSQL은 실행 때 생성한다. [scripts/release](scripts/release)의 스크립트는 이전 수동 릴리스 절차의 소스다. 향후 승인된 릴리스에서만 별도 Vercel CLI 로그인, 프로젝트 연결 JSON(`VERCEL_LINK_FILE`), 영수증 경로(`RELEASE_RECEIPT_DIR`), 격리 Preview 환경을 준비한다. 릴리스 스크립트의 Bash 구문만 확인했다.
 
-로컬 DB와 키는 직접 준비하고, Production DB를 복제하거나 연결하지 마세요. 개발 DB에서 스키마를 적용하려면 `cd online-game && npm run migrate`를 실행합니다. 마이그레이션은 존재하는 migration만 순서대로 적용하며 DB 초기화 명령은 없습니다. 개발 관리자 계정은 `npm run admin:create -- 관리자닉`으로 만들며 암호를 터미널에서 두 번 숨김 입력합니다. 테스트는 분리된 빈 `commute_test_*` PostgreSQL에서만 실행합니다: `TEST_DATABASE_URL=... npm test`. 앱 테이블이 이미 있는 DB는 테스트가 거절합니다.
+## 검증 및 재개 순서
 
-## 로컬·Preview·Production 구분
-
-- **로컬:** 별도 로컬 DB·전용 pepper·별도 테스트 계정. `.env.local`에 운영 값을 붙여 넣지 마세요.
-- **Preview:** Vercel 계정 소유자가 개발용 DB 브랜치와 Preview 전용 비밀 변수를 연결한 경우에만 배포·검증합니다. Production DB 값은 Preview에 설정하지 마세요.
-- **Production:** 기존 프로젝트 `htsq/seoul-commute-online`, 운영 환경 변수와 DB는 이미 배포된 서비스 소유자만 다룹니다. 이번 GitHub 인수인계 push는 그 프로젝트의 배포 소스 연결을 바꾸거나 운영 마이그레이션을 실행하지 않습니다. 새 컴퓨터에서 `vercel --prod`, `npm run migrate` 또는 운영 DB 연결을 하지 마세요.
-
-Vercel CLI에서 기존 프로젝트를 조회했으며 Git Repository는 연결되지 않은 상태라 이번 GitHub push가 Vercel Preview/Production 배포를 자동 실행하지 않습니다. Production은 수동 CLI 배포로 관리합니다. 프로젝트 설정은 현재 Node.js 26.x로 보고됐지만 `online-game/package.json`은 Node.js 22.x를 요구하므로, 새 컴퓨터에서 재배포하기 전 Vercel Node 설정과 엔진 범위를 맞추세요.
-
-새 PC에서 추가로 계정을 연결할 때는 본인 브라우저에서 GitHub/Vercel/Neon 로그인과 권한 승인을 직접 진행합니다. CLI 토큰·DB 문자열·관리자 암호를 문서나 채팅에 붙이지 않습니다. 이 저장소의 GitHub push 자체는 Pages의 `main`을 변경하지 않습니다. Vercel Git 저장소도 연결되어 있지 않아 자동 Preview/Production 배포가 발생하지 않습니다. Production 배포 브랜치 `main`은 건드리지 않았습니다.
-
-## 자산·라이선스와 제외
-
-`online-game/ASSETS.md`에 자산별 허가·크레딧·최적화와 미사용 사유가 있습니다. CC BY 4.0 출입구·개찰구와 최적화된 실행 GLB, 자체 제작 모델·코드·Three.js 라이선스 파일은 포함합니다. 공개 권한이 불명확하거나 원본 추출 제한이 있는 버스 OBJ, 차량 BLEND, 포즈 ZIP, CGTrader 역사 모델과 참고 사진은 포함하지 않았습니다. 대용량 중복 원본·ZIP·고해상도 텍스처도 없습니다. 자세한 원본 경로와 재취득 조건은 `ASSET_TRANSFER.md`를 확인하세요.
-
-## 바로 다음 할 일
-
-1. 새 PC에서 이 브랜치를 clone하고 `online-game/`과 `prototype/`의 구조를 확인합니다.
-2. 게임 규칙·그래픽 수정은 우선 `online-game/`의 Production 소스와 `GAME_SPEC.md`를 함께 검토합니다. prototype 시안은 본편과 분리해 개발합니다.
-3. 실제 계정·기록을 사용하는 외부 시험이 필요하면 새 개발 DB를 따로 준비하고, 먼저 Preview DB 분리를 확인합니다.
-4. 미지원 출발·도착 코스를 추가하기 전 서버 검증·공정성 규칙 버전과 실경로를 함께 설계합니다.
-5. 새 커밋은 `handoff/weekend-continuation` 또는 여기서 만든 작업 브랜치에 push합니다. Production 배포는 별도 요청과 검증 뒤 진행합니다.
+1. 새 clone에서 위 설치·빌드를 실행한다. 이번에는 로컬 저장소를 별도 임시 경로에 새 clone하고 npm 캐시로 lockfile 설치와 빌드, 여정·NPC·튜토리얼 테스트를 확인했다. 독립 검토에서는 관리자 대시보드 테스트도 통과했다. PostgreSQL 바이너리는 시작을 시도했으나 현재 샌드박스의 Unix 소켓 생성 제한으로 DB 통합 테스트와 브라우저 완주를 확인하지 못했다.
+2. 관리자 개발 계정과 별개의 플레이어 계정을 만든다. 튜토리얼을 끝낸 뒤 버스 및 지하철을 각 한 번 완주한다. 관리자 집계의 건수·최단 시간·원본 플레이 ID를 격리 DB 기록과 대조하고 재계산 및 중복 제출을 확인한다.
+3. `git diff handoff/resume...handoff/platform-local` 및 `git diff handoff/resume...handoff/tutorial-id-local`로 분기 이후 로컬 변경을 확인한다. 현재 기준과 파일을 직접 비교하려면 각 명령의 `...`을 공백으로 바꾼다. 별도 작업 브랜치에서 누락 변경을 선택하고 해당 여정·가입·랭킹 테스트를 다시 실행한다.
+4. 환경별 공식 규칙 버전과 배포 커밋을 읽기 전용으로 대조한다. 새 배포와 운영 변경은 별도 작업이다.

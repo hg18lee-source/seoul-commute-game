@@ -6,7 +6,7 @@
 Node.js 22, npm, PostgreSQL 서버 도구, `pg_config`, WebGL 2 브라우저가 필요합니다. Ubuntu에서 PostgreSQL 도구가 없으면 `sudo apt install postgresql libpq-dev`로 준비합니다.
 
 ```bash
-cd '/mnt/c/Users/통신운용/Desktop/AWS프로젝트/seoul-commute-entrance-integrated'
+cd "$(git rev-parse --show-toplevel)"
 if [ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]; then
   source "${NVM_DIR:-$HOME/.nvm}/nvm.sh"
   nvm use 22

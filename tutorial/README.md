@@ -7,7 +7,7 @@
 일반 WSL에서 Node.js 22.x, npm, PostgreSQL 서버 도구와 WebGL 2 브라우저를 준비합니다. 아래 명령은 필요한 npm 의존성을 설치하고 개발 서버를 시작합니다.
 
 ```bash
-cd '/mnt/c/Users/통신운용/Desktop/AWS프로젝트/seoul-commute-entrance-integrated'
+cd "$(git rev-parse --show-toplevel)"
 nvm_script="${NVM_DIR:-$HOME/.nvm}/nvm.sh"
 if [ -s "$nvm_script" ]; then source "$nvm_script" && nvm use 22; fi
 bash tutorial/run-local.sh

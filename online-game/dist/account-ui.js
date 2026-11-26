@@ -1,4 +1,5 @@
 import { api, currentAccount, element, setAccount } from './online.js';
+import { idPattern, signupFailure, validateSignup } from './account-rules.js';
 
 export function accountInterface({openDialog,closeDialog,button,menu,start,timeText}) {
   const $=id=>document.getElementById(id);
@@ -13,21 +14,46 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
   }
   function accountForm(mode) {
     const admin=mode==='admin-login', signup=mode==='signup';
+    const nicknameHelp=signup
+      ? '<small id="nickname-rule" class="account-rule">한글·영문 1~10자 · 공백 불가</small><span id="nickname-error" class="account-error" aria-live="polite"></span>'
+      : '';
+    const passwordHelp=signup
+      ? '<small id="password-rule" class="account-rule">숫자 4자리</small><span id="password-error" class="account-error" aria-live="polite"></span>'
+      : '';
+    const nicknameAttrs=signup?'aria-describedby="nickname-rule nickname-error"':'maxlength="10"';
+    const passwordAttrs=signup?'inputmode="numeric" aria-describedby="password-rule password-error"':
+      admin?'minlength="20" maxlength="128"':'inputmode="numeric" minlength="4" maxlength="4" pattern="[0-9]{4}"';
     openDialog('<h2>'+(signup?'ID 생성':admin?'관리자 로그인':'로그인')+'</h2>'+
-      '<form id="account-form"><label>닉네임<input name="nickname" required maxlength="10" autocomplete="username"></label>'+
-      '<label>비밀번호<input name="password" required type="password" '+(admin?'minlength="20" maxlength="128"':
-        'inputmode="numeric" minlength="4" maxlength="4" pattern="[0-9]{4}"')+' autocomplete="'+(signup?'new-password':'current-password')+'"></label>'+
+      '<form id="account-form"'+(signup?' novalidate':'')+'><label>닉네임<input name="nickname" required '+nicknameAttrs+
+      ' autocomplete="username">'+nicknameHelp+'</label>'+
+      '<label>비밀번호<input name="password" required type="password" '+passwordAttrs+
+      ' autocomplete="'+(signup?'new-password':'current-password')+'">'+passwordHelp+'</label>'+
       '<p id="account-status" role="status"></p><div class="button-row"><button class="btn light" type="submit">'+
       (signup?'생성':'로그인')+'</button><button type="button" id="account-exit" class="btn">나가기</button></div></form>');
     const form=$('account-form'), status=$('account-status'), exit=$('account-exit'), submit=form.querySelector('[type=submit]');
+    const showFieldError=(field,message='')=>{
+      $(field+'-error').textContent=message;
+      if (message) form.elements[field].setAttribute('aria-invalid','true');
+      else form.elements[field].removeAttribute('aria-invalid');
+    };
+    if (signup) for (const field of ['nickname','password']) {
+      form.elements[field].addEventListener('input',()=>showFieldError(field));
+    }
     exit.onclick=closeDialog;
     form.elements.nickname.focus();
     form.onsubmit=async event=>{
       event.preventDefault();
       if (submit.disabled) return;
       const data=new FormData(form);
-      const nickname=String(data.get('nickname')).normalize('NFC'), password=String(data.get('password'));
-      if (!/^[A-Za-z가-힣]{1,10}$/u.test(nickname)) {
+      const rawNickname=String(data.get('nickname')), password=String(data.get('password'));
+      const nickname=rawNickname.normalize('NFC');
+      if (signup) {
+        const { errors }=validateSignup(rawNickname,password);
+        status.textContent='';
+        for (const field of ['nickname','password']) showFieldError(field,errors[field]);
+        const first=Object.keys(errors)[0];
+        if (first) {form.elements[first].focus();return;}
+      } else if (!idPattern.test(nickname)) {
         status.textContent='닉네임은 공백 없이 한글·영문 1~10자로 입력하세요.';
         return;
       }
@@ -38,10 +64,15 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
         if (admin) location.assign('/administrator');
         else menu();
       } catch (error) {
-        const messages={duplicate_id:'이미 사용 중인 닉네임입니다.',account_input:'닉네임과 숫자 4자리 비밀번호를 확인하세요.',
-          credentials:'닉네임 또는 비밀번호가 올바르지 않습니다.'};
-        status.textContent=messages[error.message]??'요청에 실패했습니다. 다시 시도해 주세요.';
-        form.elements.password.value='';
+        if (signup) {
+          const { field, message }=signupFailure(error);
+          status.textContent=field?'':message;
+          if (field) {showFieldError(field,message);form.elements[field].focus();}
+        } else {
+          status.textContent=error.message==='credentials'?'닉네임 또는 비밀번호가 올바르지 않습니다.':
+            '요청에 실패했습니다. 다시 시도해 주세요.';
+          form.elements.password.value='';
+        }
         submit.disabled=exit.disabled=false;
       }
     };
@@ -145,17 +176,20 @@ export function accountInterface({openDialog,closeDialog,button,menu,start,timeT
       '<div id="menu-actions" class="button-row"></div><p id="menu-status" role="status"></p>'+
       '<p class="small-note">방향키 이동 · Shift 달리기 · M 길찾기 · E 상호작용</p></section>';
     const actions=$('menu-actions');
-    if (localTutorial) {
+    if (localTutorial&&!user) {
       const tutorial=element('a','AI 출근 튜토리얼');
       tutorial.href='/tutorial/';
       tutorial.className='btn';
       actions.append(tutorial);
-      if (preference) $('menu-status').textContent=
-        (preference==='bus'?'버스':'지하철')+' 경로가 선택됐습니다. '+(user?'게임 시작에서 코스를 확인하세요.':'본 게임은 로그인 후 시작할 수 있습니다.');
+
     }
+    if (preference) $('menu-status').textContent=
+      (preference==='bus'?'버스':'지하철')+' 경로가 선택됐습니다. '+(user?'게임 시작에서 코스를 확인하세요.':'본 게임은 로그인 후 시작할 수 있습니다.');
     if (!user) {
       $('intro-note').textContent='공덕동에서 충정로역 근처 회사까지 출근하세요.';
-      actions.append(button('ID 생성',()=>accountForm('signup'),'btn light'),button('로그인',()=>accountForm('login')));
+      const login=button('로그인',()=>accountForm('login'));
+      actions.prepend(button('ID 생성',()=>accountForm('signup'),'btn light'),login);
+      if (preference) login.focus();
       return;
     }
     $('intro-note').textContent=user.nickname+' 님, 08:00에 집을 나섭니다.';

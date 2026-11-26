@@ -5,6 +5,7 @@ import { localTutorialFile, serveTutorial } from '../local-http.mjs';
 import { createPracticeInput } from '../input.mjs';
 import { createDialogue } from '../dialogue.mjs';
 import { createTutorial, steps } from '../state.mjs';
+import { World } from '../../online-game/dist/world.js';
 import { entranceBlocked, entranceHeight } from '../../online-game/dist/transit-scene.js';
 
 function fixture() {
@@ -74,7 +75,8 @@ test('unknown tools, routes and injected identity cannot pass validation', () =>
 
 function at(game, flags = {}) {
   const [x, z] = steps[game.snapshot().stage].point;
-  return game.practice({ x, z, ...flags });
+  const height = entranceHeight(x, z);
+  return game.practice({ x, z, y: height, entranceTargetY: height, ...flags });
 }
 
 function common(game, route) {
@@ -203,6 +205,7 @@ test('local menu exposes the guest link and preselects a server-listed course wi
   class Element {
     constructor(tag) { this.tag = tag; this.children = []; this.attributes = {}; this.isConnected = true; }
     append(...items) { this.children.push(...items); }
+    prepend(...items) { this.children.unshift(...items); }
     get lastChild() { return this.children.at(-1); }
     setAttribute(key, value) { this.attributes[key] = value; }
     focus() { this.focused = true; }
@@ -241,11 +244,124 @@ test('local menu exposes the guest link and preselects a server-listed course wi
   assert.equal(get('menu-actions').children.some(child => child.text === '게임 시작'), false);
   assert.equal(requests, 0);
   setAccount({ nickname: '연습', role: 'player' });
+  get('menu-actions').children=[];
   menu.renderMenu();
+  assert.equal(get('menu-actions').children.some(child => child.href === '/tutorial/'), false);
   await get('menu-actions').children.find(child => child.text === '게임 시작').onclick();
   const preferred = get('course-choices').children.find(child => 'data-practice-choice' in child.attributes);
   assert.ok(preferred.focused);
   assert.deepEqual(starts, []);
   preferred.onclick();
   assert.deepEqual(starts, ['demoBus']);
+  setAccount(null);
+  get('menu-actions').children=[];
+  menu.renderMenu();
+  assert.ok(get('menu-actions').children.some(child => child.href === '/tutorial/'));
+});
+
+test('the entrance waypoint accepts only the approach aligned with the right stair lane', () => {
+  const game = createTutorial();
+  common(game, 'rail');
+  const [x, z] = steps.entranceApproach.point;
+  assert.ok(x > -5 && z > -22.2);
+  assert.equal(game.practice({ x: -6, z }), false);
+  assert.equal(game.practice({ x: -5, z }), false);
+  const right = game.guide({ x, z });
+  assert.match(right.label, /오른쪽/);
+  for (const offset of [-right.radius, 0, right.radius])
+    assert.equal(entranceBlocked(x + offset, -23), false);
+  assert.equal(game.practice({ x, z }), true);
+});
+
+test('real World.move can descend the right lane and the landing requires the lower elevation', () => {
+  const game = createTutorial();
+  common(game, 'rail');
+  assert.ok(at(game));
+  const [x, z] = steps.entrance.point;
+  const entranceTargetY = entranceHeight(x, z);
+  assert.ok(x > -5 && entranceTargetY < -3);
+  assert.equal(game.practice({ x, z, y: 0, entranceTargetY }), false);
+  const world = Object.assign(Object.create(World.prototype), {
+    hero: { position: { x, z: -21, y: 0 } }, mode: 'street', transit: { entrance: true },
+    moveOrigin: { set(x, y) { Object.assign(this, { x, y }); } }, bounds: { minX: -7, maxX: -3, minZ: -33, maxZ: -14 },
+  });
+  for (let frame = 0; frame < 250 && game.snapshot().stage === 'entrance'; frame++) {
+    assert.ok(world.move(0, -1, .02, 3.6));
+    game.practice({ ...world.hero.position, entranceTargetY });
+  }
+  assert.equal(game.snapshot().stage, 'gate');
+  assert.ok(world.hero.position.y < -3);
+});
+
+test('a valid session redirects every direct tutorial page entry to the main menu', async () => {
+  for (const path of ['/tutorial', '/tutorial/', '/tutorial/index.html']) {
+    let result;
+    const response = { writeHead: (status, headers) => { result = { status, headers }; return response; }, end() {} };
+    assert.ok(await serveTutorial({ method: 'GET' }, response, path, async () => true));
+    assert.equal(result.status, 302);
+    assert.equal(result.headers.Location, '/');
+  }
+});
+
+test('signup field messages follow the existing nickname and PIN rules', async () => {
+  const { validateSignup, signupFailure } = await import('../../online-game/dist/account-rules.js');
+  assert.deepEqual(validateSignup('', '').errors, {
+    nickname: '닉네임을 입력해주세요.', password: '비밀번호를 입력해주세요.',
+  });
+  const pin = ['0', '1', '2', '3'].join('');
+  for (const nickname of ['가나다라마바사아자차', 'Abcdefghij', '첫출근']) {
+    const result = validateSignup(nickname, pin);
+    assert.deepEqual(result.errors, {});
+    assert.equal(result.password, pin);
+  }
+  assert.match(validateSignup('Abcdefghijk', pin).errors.nickname, /10자/);
+  assert.match(validateSignup('공 백', pin).errors.nickname, /공백/);
+  for (const nickname of ['닉1', '닉!', 'ㄱ']) assert.match(validateSignup(nickname, pin).errors.nickname, /완성형과 영문만/);
+  for (const password of ['012', '01234', '0A23']) assert.match(validateSignup('출근', password).errors.password, /숫자 4자리/);
+  assert.equal(signupFailure({ status: 409, message: 'duplicate_id' }).field, 'nickname');
+  const network = signupFailure(new TypeError('network unavailable'));
+  assert.equal(network.field, undefined);
+  assert.match(network.message, /연결/);
+  assert.doesNotMatch(signupFailure({ status: 500, message: 'duplicate_id' }).message, /이미 사용/);
+});
+
+test('signup exposes both field errors before fetch and preserves entries on server failure', async t => {
+  const { accountInterface } = await import('../../online-game/dist/account-ui.js');
+  const original = { document: globalThis.document, fetch: globalThis.fetch, FormData: globalThis.FormData };
+  t.after(() => Object.assign(globalThis, original));
+  let focused, markup, pendingReject, requests = 0;
+  const field = name => ({
+    value: '', addEventListener() {}, setAttribute() {}, removeAttribute() {}, focus() { focused = name; },
+  });
+  const nickname = field('nickname'), password = field('password'), submit = {};
+  const form = { elements: { nickname, password }, querySelector: () => submit };
+  const elements = { 'account-form': form, 'account-exit': {}, 'account-status': {}, 'nickname-error': {}, 'password-error': {} };
+  globalThis.document = { querySelector: () => null, getElementById: id => elements[id] };
+  globalThis.FormData = class { get(name) { return form.elements[name].value; } };
+  globalThis.fetch = async () => {
+    requests++;
+    return new Promise((_, reject) => { pendingReject = reject; });
+  };
+  accountInterface({ openDialog: html => { markup = html; }, closeDialog() {} }).accountForm('signup');
+  assert.match(markup, /novalidate/);
+  assert.match(markup, /nickname-rule nickname-error/);
+  assert.match(markup, /type="password" inputmode="numeric"/);
+  const event = { preventDefault() {} };
+  await form.onsubmit(event);
+  assert.match(elements['nickname-error'].textContent, /입력해주세요/);
+  assert.match(elements['password-error'].textContent, /입력해주세요/);
+  assert.equal(focused, 'nickname');
+  assert.equal(requests, 0);
+  nickname.value = '출근연습';
+  password.value = ['0', '1', '2', '3'].join('');
+  const submission = form.onsubmit(event);
+  await form.onsubmit(event);
+  assert.equal(requests, 1);
+  pendingReject(new TypeError('network'));
+  await submission;
+  assert.match(elements['account-status'].textContent, /연결/);
+  assert.equal(elements['nickname-error'].textContent, '');
+  assert.equal(nickname.value, '출근연습');
+  assert.equal(password.value.length, 4);
+  assert.equal(submit.disabled, false);
 });

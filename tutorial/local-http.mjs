@@ -23,11 +23,15 @@ export function localTutorialFile(path) {
   return null;
 }
 
-export async function serveTutorial(req, res, path) {
+export async function serveTutorial(req, res, path, signedIn = async () => false) {
   const file = localTutorialFile(path);
   if (file === undefined) return false;
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, { Allow: 'GET, HEAD' }).end();
+    return true;
+  }
+  if (['/tutorial', '/tutorial/', '/tutorial/index.html'].includes(path) && await signedIn()) {
+    res.writeHead(302, { Location: '/', 'Cache-Control': 'no-store' }).end();
     return true;
   }
   if (path === '/tutorial') {

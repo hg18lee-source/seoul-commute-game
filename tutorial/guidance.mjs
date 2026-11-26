@@ -1,8 +1,8 @@
 const actions = {
   walk: ['이곳으로 이동', 0.85, '방향키', '표시된 영역까지 이동'],
   interact: ['연습 안내', 1.35, 'E', '연습 안내 확인'],
-  entranceApproach: ['왼쪽 계단 입구', 0.65, '방향키', '계단 왼쪽 입구로 이동'],
-  entrance: ['계단 아래', 1.1, '↑', '왼쪽 통로로 내려가기'],
+  entranceApproach: ['오른쪽 계단 입구', 0.30, '방향키', '계단 오른쪽 입구로 이동'],
+  entrance: ['오른쪽 계단 아래', 0.33, '↑', '오른쪽 통로로 내려가기'],
   gate: ['개찰구', 1.15, 'E', '개찰구 열기'],
   pass: ['개찰구 통과 지점', 0.5, '↑', '열린 중앙 통로 지나가기'],
   platform: ['충정로 방면', 0.85, '방향키', '오른쪽 승강장으로 이동'],
@@ -25,8 +25,10 @@ export function describeTarget(stage, point, context = {}) {
     return { point: null, key, text, ready: false };
   }
   const [label, radius, key, action] = actions[stage];
-  const distance = Math.hypot(context.x - point[0], context.z - point[1]);
-  const nearby = Number.isFinite(distance) && distance <= radius;
+  const horizontal = Math.hypot(context.x - point[0], context.z - point[1]);
+  const elevation = stage === 'entrance' ? Math.abs(context.y - context.entranceTargetY) : 0;
+  const distance = Math.hypot(horizontal, elevation);
+  const nearby = horizontal <= radius && elevation <= .22;
   const blocked = stage === 'pass' && !context.gateOpen;
   const misaligned = stage === 'pass' && nearby && Math.abs(context.x) > .44;
   const ready = nearby && !blocked && !misaligned;
@@ -34,7 +36,7 @@ export function describeTarget(stage, point, context = {}) {
     point, label, radius, distance, nearby, ready,
     key: blocked ? '대기' : ready ? key : '방향키',
     text: blocked ? '개찰구 문이 열리는 중입니다.' :
-      misaligned ? '몸을 개찰구 중앙으로 맞추세요.' : ready ? action : label + ' 표시로 이동하세요.',
+      misaligned ? '몸을 개찰구 중앙으로 맞추세요.' : ready ? action : stage === 'entrance' ? '오른쪽 통로를 따라 계단을 내려가세요.' : label + ' 표시로 이동하세요.',
     activation: key === 'E' ? 'interact' : 'walk',
   };
 }

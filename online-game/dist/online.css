@@ -68,3 +68,16 @@ body.playing .top-right a { display: none; }
 @media(max-width:560px) { .course-choices { grid-template-columns:1fr; gap:9px; } .course-choice { min-height:112px; padding:13px; } }
 
 .course-choice[data-practice-choice] { outline: 2px solid #6fae91; outline-offset: 2px; }
+#account-form .account-rule, #account-form .account-error {
+  display: block;
+  margin-top: .25rem;
+  line-height: 1.45;
+  font-size: .83rem;
+}
+#dialog #account-form[novalidate] > label { display: block; }
+#dialog #account-form[novalidate] > label + label { margin-top: 1.25rem; }
+#dialog #account-form[novalidate] input { margin-bottom: 0; }
+#account-form .account-rule { opacity: .8; }
+#account-form .account-error { color: #ffb7a9; font-weight: 700; }
+#account-form .account-error:empty { display: none; }
+#account-form [aria-invalid="true"] { outline: 2px solid #ee9a89; outline-offset: 2px; }

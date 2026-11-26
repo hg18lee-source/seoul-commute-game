@@ -76,12 +76,15 @@ test('account rules, case-folding uniqueness, concurrent signup, and Argon2id',a
   const {rows:[stored]}=await pool.query('SELECT password_hash FROM commute_users WHERE id=$1',[signup.body.user.id]);
   assert.match(stored.password_hash,/^\$argon2id\$/);
   assert.notEqual(stored.password_hash,testPin);
-  for (const nickname of ['공 백','a123','닉!','ㄱ','A'.repeat(11),'Team\n','!']) {
+  for (const nickname of ['','공 백','a123','닉!','ㄱ','A'.repeat(11),'Team\n','!']) {
     assert.equal((await browser()('signup',{nickname,password:testPin})).status,400);
   }
-  for (const password of [123,'012','01234','٠١٢٣','0123\n']) {
+  for (const password of [123,'','012','01234','0A23','٠١٢٣','0123\n']) {
     assert.equal((await browser()('signup',{nickname:'Invalid',password})).status,400);
   }
+  const maxLength=browser();
+  assert.equal((await maxLength('signup',{nickname:'Abcdefghij',password:testPin})).status,201);
+  assert.equal((await maxLength('login',{nickname:'ABCDEFGHIJ',password:testPin})).status,200);
   beta=browser();
   const race=await Promise.all([
     beta('signup',{nickname:'Office',password:testPin}),

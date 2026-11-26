@@ -5,7 +5,7 @@ const source=new URL('../dist/',import.meta.url);
 const output=new URL('../public-online/',import.meta.url);
 const files=[
   'game.js','journey.js','world.js','gongdeok-street.js','storefronts.js','transit-scene.js',
-  'style.css','online.js','account-ui.js','online.css',
+  'style.css','online.js','account-ui.js','account-rules.js','online.css',
   'hero/commuter.glb','hero/motion.js','hero/npc.js','hero/vendor/loaders/GLTFLoader.js',
   'hero/vendor/utils/BufferGeometryUtils.js',
   'transit-assets/gongdeok-entrance.glb','transit-assets/ticket-gate.glb',

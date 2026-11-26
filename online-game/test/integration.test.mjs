@@ -4,7 +4,8 @@ import { after, before, test } from 'node:test';
 import { app } from '../server/app.mjs';
 import { digest, passwords } from '../server/auth.mjs';
 import { makePool } from '../server/db.mjs';
-import { initialState } from '../server/rules.mjs';
+import { initialState, previousRules } from '../server/rules.mjs';
+import { BUS_COURSE, RIGHT_EXIT_RULES } from '../dist/journey.js';
 import { migrate } from '../scripts/migrate.mjs';
 import { journey } from './journey.mjs';
 
@@ -182,8 +183,20 @@ test('wrong owner, wrong session, teleports, paused movement, timeouts, and canc
 
 test('validated fixed completion journey, tied ranks, retry, and durable own history',async()=>{
   await journey(alpha,setClock,beginning(),routes.rail,{collisions:true,cancelAfterCollisions:true});
+  const userId=(await alpha('session')).body.user.id;
+  const older=[
+    [randomUUID(),routes.rail,RIGHT_EXIT_RULES],
+    [randomUUID(),BUS_COURSE.id,previousRules],
+  ];
+  for (const [id,course,version] of older) {
+    await pool.query('INSERT INTO commute_records(play_id,user_id,course,rules,tenths,finished_at) VALUES($1,$2,$3,$4,1,$5)',
+      [id,userId,course,version,new Date(now-1000)]);
+    const empty=await alpha('ranking?course='+course+'&rules='+version);
+    assert.equal(empty.status,200);
+    assert.deepEqual(empty.body.rows,[]);
+  }
   const first=await journey(alpha,setClock,beginning(),routes.rail,{pause:true});
-  assert.equal(first.result.body.best,null);
+  assert.equal(first.result.body.best,first.result.body.tenths);
   const duplicate=await alpha('play-finish',{id:first.id,seq:first.seq,wall:first.wall,events:[]});
   assert.deepEqual([duplicate.status,duplicate.body.error],[409,'play_closed']);
   await journey(beta,setClock,beginning(),routes.rail);
@@ -192,14 +205,24 @@ test('validated fixed completion journey, tied ranks, retry, and durable own his
   const rail=(await alpha('ranking?course='+routes.rail)).body.rows;
   assert.deepEqual(rail.map(row=>row.rank),[1,1]);
   assert.equal(rail.filter(row=>row.mine).length,1);
+  assert.equal(rail[0].tenths,first.result.body.tenths);
+  const bus=await journey(alpha,setClock,beginning(),BUS_COURSE.id);
+  assert.equal(bus.result.body.best,bus.result.body.tenths);
+  const busRanking=(await alpha('ranking?course='+BUS_COURSE.id)).body.rows;
+  assert.deepEqual(busRanking,[{nickname:'첫출근',tenths:bus.result.body.tenths,rank:1,mine:true}]);
   const anotherBrowser=browser();
   await anotherBrowser('login',{nickname:'첫출근',password:testPin});
   const own=(await anotherBrowser('records?user='+((await beta('session')).body.user.id))).body.rows;
-  assert.equal(own.length,2);
-  assert.ok(own.every(row=>row.course===routes.rail));
+  assert.equal(own.length,5);
+  assert.deepEqual(own.filter(row=>row.previousVersion).map(row=>row.play_id).sort(),
+    older.map(([id])=>id).sort());
+  for (const [id,course,version] of older) {
+    const stored=(await pool.query('SELECT course,rules,tenths FROM commute_records WHERE play_id=$1',[id])).rows;
+    assert.deepEqual(stored,[{course,rules:version,tenths:1}]);
+  }
   const afterRestart=app(pool,config);
   const reloaded=await afterRestart(new Request(origin+'/api/records',{headers:{cookie:anotherBrowser.cookies().cookie}}));
-  assert.equal((await reloaded.json()).rows.length,2);
+  assert.equal((await reloaded.json()).rows.length,5);
 });
 
 test('logged API results, cross-request cache, external calls and sanitized admin detail',async()=>{

@@ -15,7 +15,55 @@ export const CHECKPOINTS = Object.freeze({
   busOfficeStart: Object.freeze({office:Object.freeze({x:0,z:14})}),
 });
 
+export const CONNECTED_ENTRANCE_RULES = 'gongdeok-chungjeongno-walk-6';
+export const STATION_ENTRANCE = Object.freeze({
+  opening: {left:-6.93,right:-3.07,front:-22.19,back:-29.35},
+  entry: {x:-4,z:-22.19,minX:-4.52,maxX:-3.68},
+  landing: {x:-4,z:-32.8,y:-4.048},
+  turn: {x:.55,z:-33.75},
+  exit: {x:.55,z:-38.15,minX:-.96,maxX:2.06},
+  shaftEnd:-31.064,
+  dividerEnd:-31.75,
+  descentEnd:-32.25,
+  sideOpening:-32.15,
+  bend:-35.5,
+  corridorLeft:-1.2,
+  corridorRight:2.3,
+  end:-39,
+  ceiling:-.77,
+});
+
+export function insideEntranceFloor(x,z) {
+  const {opening:o,sideOpening,bend,corridorLeft,corridorRight,end}=STATION_ENTRANCE;
+  if (z>=sideOpening) return x>=o.left&&x<=o.right&&z<=o.front;
+  if (z>=bend) return x>=o.left&&x<=corridorRight;
+  return z>=end&&x>=corridorLeft&&x<=corridorRight;
+}
+
+export const ENTRANCE_PLAYER_RADIUS = .24;
+
+export function entranceWalkable(x,z) {
+  const {opening:o,entry,dividerEnd}=STATION_ENTRANCE;
+  const radius=ENTRANCE_PLAYER_RADIUS;
+  if (z>o.front+.01) return false;
+  if (z>dividerEnd&&(x<entry.minX||x>entry.maxX)) return false;
+  const front=Math.min(o.front,z+radius), back=z-radius;
+  return insideEntranceFloor(x-radius,front)&&insideEntranceFloor(x+radius,front)
+    &&insideEntranceFloor(x-radius,back)&&insideEntranceFloor(x+radius,back);
+}
+
+export function atEntranceEntry(x,z) {
+  const {entry}=STATION_ENTRANCE;
+  return x>=entry.minX&&x<=entry.maxX&&z<=entry.z&&z>=entry.z-.3;
+}
+
+export function atEntranceExit(x,z) {
+  const {exit,end}=STATION_ENTRANCE;
+  return x>=exit.minX&&x<=exit.maxX&&z<=exit.z&&z>=end+.23;
+}
+
 export const RIGHT_EXIT_RULES = 'gongdeok-chungjeongno-walk-5';
+export const usesRightStationExit = version => version===RIGHT_EXIT_RULES||version===CONNECTED_ENTRANCE_RULES;
 export const RIGHT_STATION_EXIT = Object.freeze({x:2.25,z:-24,radius:1.25});
 export const insideRightStationExit = (x,z) =>
   Math.hypot(x-RIGHT_STATION_EXIT.x,z-RIGHT_STATION_EXIT.z)<RIGHT_STATION_EXIT.radius;

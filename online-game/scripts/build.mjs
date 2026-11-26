@@ -41,7 +41,7 @@ for (const [name,bytes] of tutorialInputs) {
       .replace(/(["'])\.\/(style\.css|app\.mjs)\1/g,(_,quote,file)=>quote+'/'+prefix+'tutorial/'+file+quote);
     await writeFile(new URL('tutorial/index.html',output),html);
   } else {
-    const content=name.endsWith('.mjs')?bytes.toString('utf8').replaceAll("'/assets/","'../"):bytes;
+    const content=name.endsWith('.mjs')?bytes.toString('utf8').replaceAll("'/assets/","'../").replace("'../dist/journey.js'","'../journey.js'"):bytes;
     await writeFile(new URL(prefix+'tutorial/'+name,output),content);
   }
 }

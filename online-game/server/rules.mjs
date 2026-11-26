@@ -1,16 +1,17 @@
-import { BUS_COURSE, BUS_STOPS, CHECKPOINTS, COURSE, COURSES, TRAIN_LINES, RIGHT_EXIT_RULES, insideRightStationExit } from '../dist/journey.js';
+import { BUS_COURSE, BUS_STOPS, CHECKPOINTS, COURSE, COURSES, TRAIN_LINES, CONNECTED_ENTRANCE_RULES, RIGHT_EXIT_RULES, STATION_ENTRANCE, atEntranceEntry, atEntranceExit, entranceWalkable, usesRightStationExit, insideRightStationExit } from '../dist/journey.js';
 
 export const legacyRules = 'gongdeok-movement-v2-online-1';
 export const previousRules = 'gongdeok-chungjeongno-walk-3';
 export const originalExitRules = 'gongdeok-chungjeongno-walk-4';
-export const rules = RIGHT_EXIT_RULES;
-export const rankingRules = {[COURSE.id]:[rules,originalExitRules],[BUS_COURSE.id]:[originalExitRules]};
-export const ruleVersions = {[rules]:'오른쪽 출구 동선',[originalExitRules]:'기존 출구 동선',[previousRules]:'기존 충정로 도보 코스',[legacyRules]:'이전 코스'};
+export const rules = CONNECTED_ENTRANCE_RULES;
+export const officialRules = {[COURSE.id]:rules,[BUS_COURSE.id]:originalExitRules};
+export const supportedRules = new Set([rules,RIGHT_EXIT_RULES,originalExitRules,previousRules,legacyRules]);
 export const courses = COURSES;
 export const expiryMs = 10000;
 const lines = TRAIN_LINES;
+const entranceBounds=[STATION_ENTRANCE.opening.left,STATION_ENTRANCE.corridorRight,STATION_ENTRANCE.end,STATION_ENTRANCE.opening.front];
 const bounds = {street:[-10,10,-48,32],hall:[-9,9,1,19],'exit-hall':[-6.72,6.72,1,19],platform:[-4.45,4.45,-25,25],
-  vehicle:[-1.9,1.9,-11,11],office:[-9,9,-28,34],'exit-street':[-9,9,-28,34]};
+  'entrance':entranceBounds,'entrance-corridor':entranceBounds,vehicle:[-1.9,1.9,-11,11],office:[-9,9,-28,34],'exit-street':[-9,9,-28,34]};
 const near = (s,x,z,r=2.35) => Math.hypot(s.x-x,s.z-z)<r+.015;
 const close = (a,b) => Math.abs(a-b)<.012;
 const spawn = (s,x,z) => close(s.x,x)&&close(s.z,z);
@@ -47,6 +48,7 @@ function snapshot(s) {
       || !range(s.t,0,7200) || !range(s.penalty??0,0,7200)) return false;
   const [x0,x1,z0,z1]=bounds[s.stage];
   if (!range(s.x,x0-.01,x1+.01)||!range(s.z,z0-.01,z1+.01)) return false;
+  if (s.stage==='entrance'||s.stage==='entrance-corridor') return s.ride===null&&entranceWalkable(s.x,s.z);
   if (s.stage!=='vehicle') return s.ride===null;
   const r=s.ride;
   return r&&['train','bus'].includes(r.type)&&integer(r.index,0,endIndex(s))
@@ -74,11 +76,21 @@ function transition(a,b,stageAt,course,version) {
     case 'street':
       if (course.transport==='train') {
         const entry=CHECKPOINTS.entrance.street, hall=CHECKPOINTS.entrance.hall;
+        if (version===CONNECTED_ENTRANCE_RULES)
+          return b.stage==='entrance'&&a.busIndex===1&&sameStops(a,b)&&atEntranceEntry(a.x,a.z)&&spawn(b,a.x,a.z);
         return b.stage==='hall'&&a.busIndex===1&&sameStops(a,b)&&(version===legacyRules?near(a,-5,-24):a.z<=entry.z+.01&&near(a,entry.x,entry.z,entry.radius))
           &&spawn(b,hall.x,hall.z);
       }
       return course.transport==='bus'&&near(a,CHECKPOINTS.busStop.street.x,CHECKPOINTS.busStop.street.z,CHECKPOINTS.busStop.street.radius)
         &&board(a,b,stageAt,'bus',a.busIndex===BUS_STOPS.length-1?-1:1,a.busIndex,course);
+    case 'entrance':
+      return version===CONNECTED_ENTRANCE_RULES&&course.transport==='train'&&sameStops(a,b)
+        &&b.stage==='entrance-corridor'&&a.z<=STATION_ENTRANCE.descentEnd&&a.z>=STATION_ENTRANCE.descentEnd-.3
+        &&spawn(b,a.x,a.z);
+    case 'entrance-corridor':
+      return version===CONNECTED_ENTRANCE_RULES&&course.transport==='train'&&sameStops(a,b)
+        &&b.stage==='hall'&&atEntranceExit(a.x,a.z)
+        &&spawn(b,CHECKPOINTS.entrance.hall.x,CHECKPOINTS.entrance.hall.z);
     case 'hall':
       return b.stage==='platform'&&sameStops(a,b)&&(version===legacyRules?near(a,0,1.6):
         Math.abs(a.x)<=CHECKPOINTS.gate.hall.maxX&&a.z<=CHECKPOINTS.gate.hall.maxZ)
@@ -93,7 +105,7 @@ function transition(a,b,stageAt,course,version) {
       }
       const stationExit=CHECKPOINTS.stationExit;
       if (a.station===course.destination) {
-        const exitContact=version===RIGHT_EXIT_RULES
+        const exitContact=usesRightStationExit(version)
           ? a.line===course.line&&insideRightStationExit(a.x,a.z)
           : near(a,stationExit.platform.x,stationExit.platform.z);
         return exitContact&&b.stage==='exit-hall'&&sameStops(a,b)

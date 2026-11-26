@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 import { addShop, cladding } from './storefronts.js';
 import { addTraffic, placeEntrance } from './transit-scene.js';
-import { BUS_COURSE } from './journey.js';
+import { BUS_COURSE, STATION_ENTRANCE } from './journey.js';
 
 const stone=0xc0b8a9, warm=0xcbbba5, concrete=0xacaaa1;
 const ink=0x303d3c, metal=0x526561, wood=0x9a7654;
@@ -78,7 +78,7 @@ function signage(parent,title,sub,w,h,x,y,z,yaw,background) {
   parent.add(sign);
 }
 
-export function buildGongdeok(parent,entranceAsset,busOnly=false) {
+export function buildGongdeok(parent,entranceAsset,busOnly=false,connected=false) {
   const group=new THREE.Group();
   group.name='Gongdeok exterior';
   parent.add(group);
@@ -109,6 +109,16 @@ export function buildGongdeok(parent,entranceAsset,busOnly=false) {
   const bulb=(x,y,z,w,h,d)=>part('lamp',x,y,z,w,h,d,0xffe9be,{
     surface:{emissive:0x99774a,emissiveIntensity:.35},
   });
+  function aroundOpening(x,z,w,d,draw) {
+    const {left,right,front,back}=STATION_ENTRANCE.opening;
+    const x0=x-w/2,x1=x+w/2,z0=z-d/2,z1=z+d/2;
+    const region=(a,b,c,e)=>{if(b>a&&e>c)draw((a+b)/2,(c+e)/2,b-a,e-c);};
+    if(x1<=left||x0>=right||z1<=back||z0>=front) return draw(x,z,w,d);
+    region(x0,Math.max(x0,left),z0,z1);
+    region(Math.min(x1,right),x1,z0,z1);
+    region(Math.max(x0,left),Math.min(x1,right),z0,Math.max(z0,back));
+    region(Math.max(x0,left),Math.min(x1,right),Math.min(z1,front),z1);
+  }
   const paving=(x,z,w,d)=>{
     const geometry=new THREE.PlaneGeometry(w,d);
     const uv=geometry.getAttribute('uv');
@@ -120,14 +130,19 @@ export function buildGongdeok(parent,entranceAsset,busOnly=false) {
     ground.receiveShadow=true;
     group.add(ground);
   };
-  if(entranceAsset&&!busOnly) {
+  if(entranceAsset&&connected) {
+    aroundOpening(0,-13,20.5,105,paving);
+    placeEntrance(entranceAsset,group,true);
+  } else if(entranceAsset&&!busOnly) {
     paving(-8.63,-13,3.24,105);
     paving(3.63,-13,13.24,105);
     paving(-5,8.65,4.02,61.7);
     paving(-5,-50.15,4.02,30.7);
     placeEntrance(entranceAsset,group);
   } else paving(0,-13,20.5,105);
-  box(20,-.23,-14,60,.14,155,0xb0aba0);
+  const groundBase=(x,z,w,d)=>box(x,-.23,z,w,.14,d,0xb0aba0);
+  if(connected) aroundOpening(20,-14,60,155,groundBase);
+  else groundBase(20,-14,60,155);
   box(-31,-.97,-14,42,.14,155,0xb0aba0);
   box(18.4,-.20,-15,16.3,.15,153,road);
   box(30,-.22,-14,7,.42,148,0xa9a79f);
@@ -142,7 +157,11 @@ export function buildGongdeok(parent,entranceAsset,busOnly=false) {
   // Marking and change of paving distinguish the shop apron, through-route and curb.
   box(-8.8,.004,-13,2.55,.007,105,0xb8ad9a);
   box(-7.49,.009,-13,.055,.01,105,0xcfc6b4);
-  for (const z of [15,-3,-14,-31,-46]) box(-2.6,.002,z,9.3,.004,.19,0xbeb7a7);
+  for (const z of [15,-3,-14,-31,-46]) {
+    const seam=(x,z,w,d)=>box(x,.002,z,w,.004,d,0xbeb7a7);
+    if(connected) aroundOpening(-2.6,z,9.3,.19,seam);
+    else seam(-2.6,z,9.3,.19);
+  }
   box(9.29,.004,-13,1.08,.007,105,0xadac9e);
   box(7.95,.009,-13,.43,.013,105,0xc8ab63);
   for (const x of [7.84,7.95,8.06]) box(x,.018,-13,.031,.014,105,0xd5ba74);
@@ -393,7 +412,7 @@ export function buildGongdeok(parent,entranceAsset,busOnly=false) {
 }
 
 export function populateGongdeok(world,{busOnly=Boolean(world.busOnly)}={}) {
-  buildGongdeok(world.root,busOnly?null:world.transit.entrance,busOnly);
+  buildGongdeok(world.root,busOnly?null:world.transit.entrance,busOnly,world.connectedEntrance);
   world.traffic=addTraffic(world.root);
   world.streetBus=world.busModel(12.44,-42);
   if(!busOnly&&!world.transit.entrance) world.spot('station','역으로 들어가기',-5,-24);

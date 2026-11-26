@@ -1,6 +1,6 @@
 import * as T from './vendor/three.module.js';
 import { GLTFLoader } from './hero/vendor/loaders/GLTFLoader.js';
-import { CHECKPOINTS } from './journey.js';
+import { CHECKPOINTS, STATION_ENTRANCE, insideEntranceFloor } from './journey.js';
 
 const loader = new GLTFLoader();
 const entranceTemplates=new WeakMap();
@@ -13,10 +13,13 @@ const treads = [
   [-6.471, -4.707],
 ];
 
-export function entranceHeight(x, z) {
-  if (Math.abs(x-entrance.x)>1.90) return 0;
+export function entranceHeight(x, z, connected=true) {
+  if (connected) {
+    if (!insideEntranceFloor(x,z)) return 0;
+    if (z<=STATION_ENTRANCE.shaftEnd) return STATION_ENTRANCE.landing.y;
+  } else if (Math.abs(x-entrance.x)>1.90||z<entranceLanding-.7) return 0;
   const localZ=(z-entrance.z)/entrance.scale;
-  if (localZ>3.93||z<entranceLanding-.7) return 0;
+  if (localZ>3.93) return 0;
   let height=0;
   for (const [edge, next] of treads) {
     if (Math.abs(localZ-edge)<.10) {
@@ -26,6 +29,26 @@ export function entranceHeight(x, z) {
     height=next;
   }
   return height*entrance.scale;
+}
+
+// Extend the imported step profile beneath the original rails and into the shaft walls.
+export function entranceStringer() {
+  const {opening,shaftEnd,landing}=STATION_ENTRANCE;
+  const profile=new T.Shape();
+  profile.moveTo(opening.front,landing.y-.1);
+  profile.lineTo(opening.front,-.015);
+  let height=-.015;
+  for(const [edge,next] of treads) {
+    const z=entrance.z+edge*entrance.scale;
+    if(z<shaftEnd) break;
+    profile.lineTo(z,height);
+    height=next*entrance.scale-.015;
+    profile.lineTo(z,height);
+  }
+  profile.lineTo(shaftEnd,height);
+  profile.lineTo(shaftEnd,landing.y-.1);
+  profile.closePath();
+  return new T.ExtrudeGeometry(profile,{depth:.405,bevelEnabled:false});
 }
 
 export function entranceBlocked(x,z) {
@@ -46,14 +69,18 @@ export async function loadTransit(onStatus) {
   return {loaded,failures:failures.filter(Boolean)};
 }
 
-export function placeEntrance(source, parent) {
-  const template=entranceTemplates.get(source);
+export function placeEntrance(source, parent, connected=false) {
+  let variants=entranceTemplates.get(source);
+  if(!variants) entranceTemplates.set(source,variants=new Map());
+  const template=variants.get(connected);
   if(template){
     parent.add(template.clone());
     return;
   }
   const root=source.scene.clone();
   root.name='공덕역 1번 출구';
+  if (connected) for (const name of ['Floor','Floor_Underground','Wall'])
+    root.getObjectByName(name)?.removeFromParent();
   root.position.set(entrance.x,0,entrance.z);
   root.scale.setScalar(entrance.scale);
   // Replace original fictional lettering with the game's local station signs.
@@ -97,7 +124,7 @@ export function placeEntrance(source, parent) {
     });
   }
   root.traverse(o=>{if(o.isMesh)o.userData.sharedGeometry=true;});
-  entranceTemplates.set(source,root);
+  variants.set(connected,root);
   parent.add(root.clone());
 }
 

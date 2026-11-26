@@ -3,6 +3,8 @@ const actions = {
   interact: ['연습 안내', 1.35, 'E', '연습 안내 확인'],
   entranceApproach: ['오른쪽 계단 입구', 0.30, '방향키', '계단 오른쪽 입구로 이동'],
   entrance: ['오른쪽 계단 아래', 0.33, '↑', '오른쪽 통로로 내려가기'],
+  entranceTurn: ['우측 연결 통로', .47, '→', '우측 통로로 이동'],
+  entranceExit: ['대합실로 이동', .34, '↑', '통로 안쪽으로 이동'],
   gate: ['개찰구', 1.15, 'E', '개찰구 열기'],
   pass: ['개찰구 통과 지점', 0.5, '↑', '열린 중앙 통로 지나가기'],
   platform: ['충정로 방면', 0.85, '방향키', '오른쪽 승강장으로 이동'],
@@ -26,7 +28,7 @@ export function describeTarget(stage, point, context = {}) {
   }
   const [label, radius, key, action] = actions[stage];
   const horizontal = Math.hypot(context.x - point[0], context.z - point[1]);
-  const elevation = stage === 'entrance' ? Math.abs(context.y - context.entranceTargetY) : 0;
+  const elevation = ['entrance','entranceTurn','entranceExit'].includes(stage) ? Math.abs(context.y - context.entranceTargetY) : 0;
   const distance = Math.hypot(horizontal, elevation);
   const nearby = horizontal <= radius && elevation <= .22;
   const blocked = stage === 'pass' && !context.gateOpen;
